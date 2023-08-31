@@ -1,0 +1,23 @@
+#### Access to machines in Naples: ####
+
+To be able to access, you must connect from one of the MURAVES institutes (INFN Naples, Louvain-la-Neuve, Gent, VUB); if connecting from elsewhere, first use a VPN to tunnel through your institute's network.
+
+ssh -XY -l [your username] 192.84.134.230 -p 65022 -o ServerAliveInterval=100
+
+DQM scripts are available here:
+/media/muraves2/DataQualityMonitor
+
+Note: only few MURAVES members have writing permissions in the MURAVES directories. Therefore, first copy the scripts in your home directory.
+
+#### Access to machines at VUB: ####
+
+https://t2bwiki.iihe.ac.be/First_access_to_t2b
+https://t2bwiki.iihe.ac.be/Cluster_Overview
+
+ssh -Y -i ~/.ssh/[name of your id_rsa file] -o ServerAliveInterval=100 [your username]@mshort.iihe.ac.be
+
+Data collected before August 2022 (~2 TB of data) have been copied in:
+/pnfs/iihe/muraves/muraves_DATA/ muraves3_VESUVIO/RAW
+
+Data collected after August 2022 are in:
+/pnfs/iihe/muraves/muraves_DATA/mCdata_VESUVIO/RAW
