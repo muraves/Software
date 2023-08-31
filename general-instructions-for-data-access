@@ -21,3 +21,9 @@ Data collected before August 2022 (~2 TB of data) have been copied in:
 
 Data collected after August 2022 are in:
 /pnfs/iihe/muraves/muraves_DATA/mCdata_VESUVIO/RAW
+
+#### Timestamp information: ####
+
+RAW data files contain timestamps at the beginning of the run, at its end, and for each event.
+These timestamps are reliable for start/end of run, but because of a bug they have an offset in the event-level information. Time differences between events are reliable, though.
+(Source of this information: Gigi)
