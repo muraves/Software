@@ -17,11 +17,8 @@ https://t2bwiki.iihe.ac.be/Cluster_Overview
 ssh -Y -i ~/.ssh/[name of your id_rsa file] -o ServerAliveInterval=100 [your username]@mshort.iihe.ac.be
 (to access specific nodes of the cluster, replace mshort with m1,m2,m3, etc.)
 
-Data collected before August 2022 (~2 TB of data) have been copied in:
-/pnfs/iihe/muraves/muraves_DATA/ muraves3_VESUVIO/RAW
-
-Data collected after August 2022 are in:
-/pnfs/iihe/muraves/muraves_DATA/mCdata_VESUVIO/RAW
+Path to the raw data files copied from muripper pc:
+/pnfs/iihe/muraves/muraves_DATA/VESUVIO/RAW/
 
 #### Timestamp information: ####
 
