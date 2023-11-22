@@ -25,3 +25,34 @@ Path to the raw data files copied from muripper pc:
 RAW data files contain timestamps at the beginning of the run, at its end, and for each event.
 These timestamps are reliable for start/end of run, but because of a bug they have an offset in the event-level information. Time differences between events are reliable, though.
 (Source of this information: Gigi)
+
+#### Baseline analysis procedure: ####
+
+Data in gzip format must be strored in the directory /pnfs/iihe/muraves/muraves_DATA/VESUVIO/RAW/<color> divided by detector name (color). In the subdir VESUVIO/SOFTWARE you can find the parsing tool.
+
+Proceed coping the python scripts in the SOFTWARE directory inside your home dir (mine is /user/cimmino/), both PaP_gzip.py and evtParserGP.py. In the same directory, create the VESUVIO dir with 2 sub folders RAW and datiVesuvio. Inside each of them, create the detector directories ROSSO, NERO and BLU
+
+
+VESUVIO    --->     RAW               --->    ROSSO
+
+                                                       --->    NERO
+
+                                                       --->    BLU
+
+                    --->    datiVesuvio    --->    ROSSO
+
+                                                       --->    NERO
+
+                                                       --->    BLU
+
+Copy the gzipped files from the shared RAW dir to your own private RAW dir, respecting color and run the parser using
+
+python3 PaP_gzip.py <runInit> <runEnd> 5 10000 4 10000 16 <color>
+
+this produces inside the directory VESUVIO/datiVesuvio/<color>, a LOG file, add CONTEGGI_run... and SLOWCONTROL_run... to the files CONTEGGI_<color>.txt and SLOWCONTROL_<color>.txt, and translate the raw files pedData and slaveData to the files PED_run... and ACQ_run... that can be analyzed.
+
+The PED and ACQ files format is:
+
+globalTriggerNumber    16x[masterboardTriggerNumber    boardNumber    32 fields ADC counts for each SiPM    relativeTimestamp    measuredTimeExpandedCounts   n/a   channelsInvolved]
+
+The main time information are in the name of the file, i.e. ADC_run14902_20220915_132123.txt is the ADC file of the run number 14902 took at 13:21:23 on 2022, 15 September.
