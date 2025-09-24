@@ -1,0 +1,61 @@
+
+# Ignore all text files
+*.txt
+
+# Ignore all PDF files
+*.pdf
+
+
+# Compiled source #
+###################
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
+
+# Packages #
+############
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# Logs and databases #
+######################
+*.log
+*.sql
+*.sqlite
+
+# IDEs and editors #
+####################
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python #
+##########
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter Notebooks #
+#####################
+.ipynb_checkpoints
+
+# Node.js #
+###########
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+# C++ build #
+#############
+build/
