@@ -30,7 +30,7 @@ $$P1 ~\& ~P2~ \& ~P3~ \& ~signal > 6~phe $$
 
 In particular when refering to a plane: $P1(2,3)$ the trigger is set on the logic OR among the 64 scintillating bars composing a plane:
 
-$$ (P1z~ \cup~P1y) \cap (P2z~ \cup~P2y) \cap (P3z~ \cup~P3y)$$
+$$ (P1z~ \cup ~P1y) \cap~ (P2z~ \cup ~P2y) \cap~ (P3z~ \cup ~P3y)$$
 
 ### Runs
 The definition of the run changes depending on the type of run:
@@ -124,6 +124,21 @@ bash MURAVES_PedestalAnalysis.sh / 11196 11196
 
 
 ### Main Reconstruction
+Main script: `MURAVES_reco_v2`. A few parameters are harcoded in the script directly:
+-   **Spacial resolution values** 
+-   **Detector positions** 
+-   **Hardware information** (number of boards, `nInfo`, `nChInfo`, ...)
+-   **Filepaths**
+A better way to approach this is to create a configuration file with all these parameters.
+This approach minimises the interations and the changes to the main reconstruction script. 
+In particular this is very important to have a flexible reconstruction script that can run from every path specifed.
+
+  <span style="color:red"> **Missing files:** </span>Several dependences missing (still on Muripper only):
+- #include "EvaluateAngularCoordinates.h"
+- #include "ClusterLists.h"
+- #include "ReadEvent.h"
+- #include "Tracking.h"
+
 
 ### Golden selection
 
@@ -131,3 +146,15 @@ bash MURAVES_PedestalAnalysis.sh / 11196 11196
 
 ### Why 6 photoelectrons is the threshold of the trigger?
 Studies have been performed demonstrating that this is a good trade off between dark counts (noise) and signal. :warning: <span style="color:yellow"> Documentation unavailable</span>
+
+# Question to be answered
+
+### What's "slow control"? 
+This is mentioned both in Pedestal analysis and in the main reconstruction script. It access specific files on Muripper (`/media/muraves3/VESUVIO/datiVesuvio/`) called `SLOWCONTROL_*.txt`
+
+### What's "spiroc hybrid map"?
+In the main reconstruction script a file called `"../../ANALYSIS/ReconstructionTracks_from3to4/config/spiroc-hybrid-map.cfg"` is required. What's this needed for, what's in it?
+
+### Telescope configuration file 
+This file is used, what's in it? There were some values, related to the telescope, hardcoded in the script. 
+`/home/muraves/Desktop/MURAVES/ANALYSIS/ReconstructionTracks_from3to4/config/telescope`
