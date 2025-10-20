@@ -25,8 +25,7 @@ Each hodoscope has 3 planes ($P_n$, n = 1,2,3) composed by 2 subdetectors each, 
 ### Trigger
 And among 3 planes of an hodoscope and signal must be above 6 photoelectrons ([FAQ](#why-6-photoelectrons-is-the-threshold-of-the-trigger)): 
 
-$$P1 ~\& ~P2~ \& ~P3~ \& ~signal > 6~phe$$
-
+$$ P1 \land P2 \land P3 \land signal > 6~phe$$
 
 In particular when refering to a plane: $P1(2,3)$ the trigger is set on the logic OR among the 64 scintillating bars composing a plane:
 
