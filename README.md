@@ -47,36 +47,59 @@ No coincidences are required among the planes. This run gives a picture of the F
   - The trigger rate is a goot test to select and discard bad runs.
 
 
-From *raw* to *parsed* data
+From *raw* to *parsered* data
 =====
-:blue_book: *This section describes steps that goes from the raw data to the human readable data format, called "parsed data".*
+:blue_book: *This section describes the steps that goes from the raw data to the human readable data format, called "parsered data".*
 
 ### Raw data
-Row data are available in exadecimal format. Furthermore, an event is broaded on 16 rows (one per each readout borad). An example of how raw data looks like is shown here:
+- **Extention:** Raw data are available as compressed files (`*.gz`). Although it is compressed, each of the `.gz` files contains just one file.
+- **Format:** Row data are in exadecimal format. Furthermore, an event is broaded on 16 rows (one per each readout borad). An example of how raw data looks like is shown here:
 ![image](documentation/raw_data.png)
 
 
-**path**: The path should contain the name of the hodoscope (NERO, BLU, ROSSO)
-**filename**: ``<ped/slave>Data_evts#_run#_sr#``\
-- ``pedData`` stands for pedestal dataset ([pedestal-run](#runs))
-- ``slaveData`` stands for cosmic dataset ([cosmic-run](#runs)). The name slave derive by the fact that the SiPMTs are connected to 16 slaves readout boards.
+- **Path**: The path should contain the name of the hodoscope (NERO, BLU, ROSSO)
+- **Filename**: ``<ped/slave>Data_evts#_run#_sr#``\
+  - ``pedData`` stands for pedestal dataset ([pedestal-run](#runs))
+  - ``slaveData`` stands for cosmic dataset ([cosmic-run](#runs)). The name slave derive by the fact that the SiPMTs are connected to 16 slaves readout boards.
+  - `evts`: total number of events, so either $40\,000$ (slave) or $50\,000$ (pedestal).
+  - `run`: run number
+  - `sr`: subrun
 
-Raw data need to undergo a procedure that makes the file easier to handle: parsing procedure, described below.
+- :warning: For each run number there are several subruns. Therefore the total number of events expected for an entire run is divided among several files (3 or 4 usually, identified by the same run number and different subrun number)
+- Raw data need to undergo a procedure that makes the file easier to handle: parsing procedure, described below.
 
 ### Parsing the data
-A **parser** function converts the information of the raw data. In particular the exadecimal number are converted in decimal and the information of an event is collected under just one raw. <span style="color:yellow"> Following information needs to be double checked. [ </span> After the parsing procedure a ``slaveData``(``pedData``)file should have $40\,000$($50\,000$) rows each fully describing a single event: board number, temperature time stamp, and 32 ADC values of each slave board. \
-The parser script ``tracks_reconstruction/1_Parser``, can be lunched as it follow
-```
-python evtParserGPBLU.py <raw_data_filename> <output_filename> <events_number> <rows_to_combine>
-```
-- ``<raw_data_file>``: absolute path of the raw data
-- ``<output_filename>``: name of the output
-- ``<events_number>``: number of events in the file, usually $50\,000$ or $40\,000$ and is indicated on the raw data file.
-- ``<rows_to_combine>``: The raw dataset has informations coming from all the 16 slave boards that needs to be combined, therefore i put 16. 
- <span style="color:yellow"> ] The raw file that I processed after the parsing procedure has $10\,000$ rows. This makes me wonder if 16 is correct. However there is no number that could give $50\,000$.</span>
+A **parser** function converts the information of the raw data. In particular the exadecimal number are converted in decimal and the information of an event is collected under just one raw.  After the parsing procedure a ``slaveData``(``pedData``)file should have $40\,000$($50\,000$) rows each fully describing a single event: board number, temperature time stamp, and 32 ADC values of each slave board. \
 
-**filename**: 
-Among other thing is put ADC_0 to ADC_31 counts all aligned in one raw to define an event. 
+The parsing procedure for 1 single run, *e.g.* `slaveData_evts40000_run12345_sr*.gz`, reads as it follows:
+- Extract all the subruns available from their `.gz` extension. The files extracted doesn't have any extension anymore.
+- The parser script ``tracks_reconstruction/1_Parser``, can be lunched as it follow:
+  ```
+  python evtParserGP_<color>.py <raw_data_file> <output_filename> <events_number> <rows_to_combine>
+  ```
+  - ``<raw_data_file>``: absolute path of the raw data
+  - ``<output_filename>``: name of the output. It should be: `ADC_run#.txt`
+  - ``<events_number>``: number of events in the file, usually $10\,000$ for a slave data. This is the number of events in a single subrun.
+  - ``<rows_to_combine>``: The raw dataset has informations coming from all the 16 slave boards that needs to be combined, therefore i put 16. 
+ 
+- In this example the bash line would be:
+  ```
+  python evtParserGP_<color>.py  slaveData_evts40000_run12345_sr1  ADC_run12345.txt  10000  16
+  ```
+- This script will create the outputfile ADC_run12345.txt and fill it with the first $10\,000$ events.
+- In orther to parse the other subruns, one should run the same line changing only the number of the rubrun:
+  ```
+  python evtParserGP_<color>.py  slaveData_evts40000_run12345_sr2  ADC_run12345.txt  10000  16
+  ```
+  ```
+  python evtParserGP_<color>.py  slaveData_evts40000_run12345_sr3  ADC_run12345.txt  10000  16
+  ```
+  ```
+  python evtParserGP_<color>.py  slaveData_evts40000_run12345_sr4  ADC_run12345.txt  10000  16
+  ```
+- After the first time, where the file ``ADC_run12345.txt`` is generated, the following time is just opened and the new raws appended.
+- Once the parsing procedure is applied to all the subrun, the output files containes the information about the $40\,000$ events of a slave dataset.
+
 
 An example of how parsed data looks like is shown here:
 ![image](documentation/parsed_data.png)
@@ -92,15 +115,26 @@ python script_Preanalysis.py <start_run> <end_run>
 - check that you gave the correct path where to search for the parsered file modifying the variable: `parseredPATH` inside the script.
 - `2_PreRec/script_Preanalysis` will call `MakePedestalTree.py`
 - <span style="color:green"> Runs without errors, the tree in the root file is filled.</span>
-- <span style="color:yellow">**To be understood:**  The branches of the tree are  `ADC_0`, `ADC_1`, ..., `ADC_31`, is this expected? *Giulio said that there should be already track related variables.*</span>
+- <span style="color:yellow">**To be understood:**  The output from the available pre-reconstruction script has less branches as what is suppose to have.</span>
+
+<span style="color:yellow">**NB:** </span> The number of board was set to 12, why?  I brought it to 16.
 
 ### Pedestal analysis
--   Generated executable by running: 
-```
+Pedestal analysis can be run by using two scripts that do the same thing: computes the value on 1phe.
+- `OnePhe_evaluator.cpp`
+  - Generate a configuration file for each board. Each of the script has 31 channel values and their corrispondend pedestal and 1phe values.
+  - Genetare a root file with SLOWCONTROL information  such as temperature, WorkingPOint, TriggerRate, ..., and the values of pedestal and 1phe for each board.
+  - Generate a root file with canvas having all the ADC histogram. They are grouped by board.
+- `OnePhe_evaluator.py`
+  - Generate a configuration file for each board. Each of the script has 31 channel values and their corrispondend pedestal and 1phe values.
+  
+#### Using `OnePhe_evaluator.cpp`
+-   Generate executable by running: 
+``` bash
 g++ -std=c++20 OnePhe_evaluator.cpp -o OnePhe_evaluator.exe     $(root-config --cflags --libs) -lSpectrum     -I/home/biolchini/miniforge3/envs/muraves/include/python3.11     -L/home/biolchini/miniforge3/envs/muraves/lib -lpython3.11
 ```
 -   To run the pedestal analysis script one should run the following:
-```
+``` bash
 bash MURAVES_PedestalAnalysis.sh <color> <start_run> <end_run>
 ```
 In my case I had to do a few modification in order to be able to run the script locally:
@@ -108,22 +142,24 @@ In my case I had to do a few modification in order to be able to run the script 
 -   Changed `Pedestal_File` to my local path to the PreAnalysed root file
 -   :warning: Found internal **unconsistency** of the name of the tree of the PreAnalysed data: PreAnalysis saves it as `ped_tree`, the script searches as `PEDtree`.
 -   :warning: **Suboptimal for debugging** the name of the tree is repeated several time instead of defining a variable.
--  <span style="color:yellow">**To be understood:** </span> The script is searching for files that I don't know what they are:
+
+
+#### Using `OnePhe_evaluator.py`
+- Run the following command:
+  ``` bash
+  python OnePhE_evaluator.py <color> <number_of_runs> <delta_around_central_runID> <central_runID>
   ```
-  SysError in <TFile::TFile>: file /media/muraves2/MURAVES_DATA///PEDanalysis/TREES/PEDdata_/_run11196.root can not be opened No such file or directory
-SysError in <TFile::TFile>: file /media/muraves2/MURAVES_DATA///PEDanalysis/CANVAS/SpectrumANDpeaks_/_run11196.root can not be opened No such file or directory
-
-```
-
-What I run (for myself to rememeber): 
-```
-bash MURAVES_PedestalAnalysis.sh / 11196 11196
-
-```
-
-
+  *e.g.* running the pedestal analysis for one run only of the ROSSO hodoscope
+  ``` bash
+  python OnePhE_evaluator.py ROSSO 1 0 15012
+  ```
 
 ### Main Reconstruction
+In order to run the main reconstruction run the following command to compile the `.cpp` and create the executable:
+```
+g++ -std=c++20 MURAVES_reco_v2.cpp -o MURAVES_reco_v2.exe     $(root-config --cflags --libs) -lSpectrum     -I/home/biolchini/miniforge3/envs/muraves/include/python3.11     -L/home/biolchini/miniforge3/envs/muraves/lib -lpython3.11
+
+```
 Main script: `MURAVES_reco_v2`. A few parameters are harcoded in the script directly:
 -   **Spacial resolution values** 
 -   **Detector positions** 
@@ -134,10 +170,10 @@ This approach minimises the interations and the changes to the main reconstructi
 In particular this is very important to have a flexible reconstruction script that can run from every path specifed.
 
   <span style="color:red"> **Missing files:** </span>Several dependences missing (still on Muripper only):
-- #include "EvaluateAngularCoordinates.h"
-- #include "ClusterLists.h"
-- #include "ReadEvent.h"
-- #include "Tracking.h"
+- "EvaluateAngularCoordinates.cpp"
+- "ClusterLists.cpp"
+- "ReadEvent.cpp"
+- "Tracking.cpp"
 
 
 ### Golden selection
