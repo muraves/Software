@@ -153,13 +153,28 @@ In my case I had to do a few modification in order to be able to run the script 
   python OnePhE_evaluator.py ROSSO 1 0 15012
   ```
 
-### Main Reconstruction
+### Main Reconstruction: `MURAVES_reco_v2.cpp`.
 In order to run the main reconstruction run the following command to compile the `.cpp` and create the executable:
 ```
-g++ -std=c++20 MURAVES_reco_v2.cpp -o MURAVES_reco_v2.exe     $(root-config --cflags --libs) -lSpectrum     -I/home/biolchini/miniforge3/envs/muraves/include/python3.11     -L/home/biolchini/miniforge3/envs/muraves/lib -lpython3.11
+g++ -std=c++20 ClusterLists.cc EvaluateAngularCoordinates.cc ReadEvent.cc Tracking.cc MURAVES_reco_v2.cpp -o MURAVES_reco_v2.exe     $(root-config --cflags --libs) -lSpectrum     -I/home/biolchini/miniforge3/envs/muraves/include/python3.11     -L/home/biolchini/miniforge3/envs/muraves/lib -lpython3.11
 
 ```
-Main script: `MURAVES_reco_v2`. A few parameters are harcoded in the script directly:
+Once the executable `MURAVES_reco_v2.exe` is created it is possible to run:
+```
+./MURAVES_reco_v2.exe <color> <start_run> <end_run>
+```
+or the bash script `MURAVESanalysis.sh`.
+If the script runs properly the following should be seen on the terminal:
+![image](documentation/WelcomeMURAVES.png)
+
+**NB**: The error is due to a pythonic part that computes the run time. It doesn't affect the execution of the main task of the script.
+#### Outputs
+The outputs are two root files.
+- `MURAVES_miniRunTree_run12_BLU.root`
+- `MURAVES_AnalyzedData_run12_BLU.root`
+
+#### Side notes:
+A few parameters are harcoded in the script directly:
 -   **Spacial resolution values** 
 -   **Detector positions** 
 -   **Hardware information** (number of boards, `nInfo`, `nChInfo`, ...)
@@ -167,12 +182,6 @@ Main script: `MURAVES_reco_v2`. A few parameters are harcoded in the script dire
 A better way to approach this is to create a configuration file with all these parameters.
 This approach minimises the interations and the changes to the main reconstruction script. 
 In particular this is very important to have a flexible reconstruction script that can run from every path specifed.
-
-  <span style="color:red"> **Missing files:** </span>Several dependences missing (still on Muripper only):
-- "EvaluateAngularCoordinates.cpp"
-- "ClusterLists.cpp"
-- "ReadEvent.cpp"
-- "Tracking.cpp"
 
 
 ### Golden selection
