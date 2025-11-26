@@ -25,7 +25,8 @@ This is an executable that will automathically:
 - **important**: The workspace is set to be the MuRaVes Git repository on T2B located in `/group/Muography/Software/`. This is a read-only folder with the only objective to run stable release of the MuRaVes software. This means you cannot modify or create new script here. If the use wish to use the container for developing purposes it is of course possible [Check this instructions](#container-in-developing-mode)!
 
 The container is up and running is you see this output:
-![image](/Software/documentation/WelcomeContainer.png)
+
+![image](../documentation/WelcomeContainer.png)
 
 ### Container in developing mode 
 The user can use this container mounting any other folder. This means that they can have any other folder available inside the container. The path can be changed by modifing the variable `WORKSPACE_HOST="/group/Muography/<whatever/folder>"` in the `/group/Muography/run_muraves_env.sh` file.

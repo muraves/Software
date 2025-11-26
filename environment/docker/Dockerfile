@@ -5,7 +5,7 @@ ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
 
 # Create the environment
-RUN mamba create -n muraves -y -c conda-forge \
+RUN mamba create -n muraves -y -c conda-forge -c bioconda\
     python=3.11 \
     root \
     iminuit \
@@ -17,6 +17,7 @@ RUN mamba create -n muraves -y -c conda-forge \
     matplotlib \
     jupyter \
     zfit \
+    snakemake \
     uproot && \
     mamba clean -afy
 
