@@ -119,31 +119,32 @@ int main(int argc, char* argv[]) {
   /// Mini-Tree
   char  MiniRunTreeName[200];
   char SavingPath_miniTree[100];
-  strcpy(SavingPath_miniTree,"/media/muraves2/MURAVES_DATA/");
+  strcpy(SavingPath_miniTree,"/workspace/test/RECONSTRUCTED/");
   strncat(SavingPath_miniTree,color,10);
+  strncat(SavingPath_miniTree,"/",1);
   //strncat(SavingPath_miniTree,"/MINI_TREESLowerEnTh/",45);
-  strncat(SavingPath_miniTree,"/MINI_TREES/",35);
+  //strncat(SavingPath_miniTree,"/MINI_TREES/",35);
   strcpy(MiniRunTreeName,SavingPath_miniTree);
   strncat(MiniRunTreeName,"MURAVES_miniRunTree_run",30);
   strncat(MiniRunTreeName,run_string,10);
-  strncat(MiniRunTreeName,"_",2);
-  strncat(MiniRunTreeName,color,10);
+  //strncat(MiniRunTreeName,"_",2);
+  //strncat(MiniRunTreeName,color,10);
   strncat(MiniRunTreeName,".root",10);
   
   // Analysis Tree
   char ROOTfileName[200];
-  char SavingPath_AnalysisTree[100];
-  strcpy(SavingPath_AnalysisTree,"/media/muraves2/MURAVES_DATA/");
-  strncat(SavingPath_AnalysisTree,color,10);
+  //char SavingPath_AnalysisTree[100];
+  //strcpy(SavingPath_AnalysisTree,"/workspace/test/RECONSTRUCTED/");
+  //strncat(SavingPath_AnalysisTree,color,10);
   //  strncat(SavingPath_AnalysisTree,"/ANALYZED_RECOv2/ClusteringWithTrMask/",50);
-  strncat(SavingPath_AnalysisTree,"/ANALYZED_RECOv2/",45);
-  if(useSingleRunPED==0) strncat(SavingPath_AnalysisTree,"GLOB_PED/",12);
-  cout << SavingPath_AnalysisTree << endl;
-  strcpy(ROOTfileName,SavingPath_AnalysisTree);
+  //strncat(SavingPath_AnalysisTree,"/ANALYZED_RECOv2/",45);
+  //if(useSingleRunPED==0) strncat(SavingPath_AnalysisTree,"GLOB_PED/",12);
+  //cout << SavingPath_AnalysisTree << endl;
+  strcpy(ROOTfileName,SavingPath_miniTree);
   strncat(ROOTfileName,	"MURAVES_AnalyzedData_run",30);
   strncat(ROOTfileName,run_string,10);
-  strncat(ROOTfileName,"_",2);
-  strncat(ROOTfileName,color,10);
+  //strncat(ROOTfileName,"_",2);
+  //strncat(ROOTfileName,color,10);
   strncat(ROOTfileName,".root",10);
 
   
@@ -158,23 +159,35 @@ int main(int argc, char* argv[]) {
   
   // FIND THE RUN ADC FILE ///////////////////////////////////////////////////////////////////////////////
   string line;
-  char  ADC_File_name[100];
-  char PATH_ADC[40];
-  char FileName[30];
-  
+  char  ADC_File_name[150];
+  char PATH_ADC[100];
+  char FileName[50];
+ 
   strcpy(FileName,"ADC_run");
   strncat(FileName,run_string,10);
-  strcpy(PATH_ADC,"/media/muraves/DATA/");
+  strncat(FileName, ".txt", 5);
+  strcpy(PATH_ADC,"/workspace/test/PARSED/");
   strncat(PATH_ADC,color,10);
+  strncat(PATH_ADC, "/", 1);
   strcpy(ADC_File_name,PATH_ADC);
-  strncat(ADC_File_name,"/PARSERED/",20);
-  strncat(ADC_File_name,FileName,30);
+  //strncat(ADC_File_name,"/PARSED/",30);
+  strncat(ADC_File_name,FileName,40);
 
-  
+  cout<< ADC_File_name <<endl;
   // USE PYTHON GLOB.GLOB TO FIND THE TAIL OF THE FILE NAME /////
+  Py_Initialize();
+  // Add the current directory to sys.path
+  PyRun_SimpleString("import sys");
+  PyRun_SimpleString("import os");
+  PyRun_SimpleString("sys.path.append(os.getcwd())");
   CPyInstance hInstance;
   CPyObject pName_searchFile = PyUnicode_FromString("SearchFileName");
   CPyObject Module_SearchAFile = PyImport_Import(pName_searchFile);
+  if (!Module_SearchAFile) {
+    PyErr_Print(); // This prints the Python error message
+    std::cerr << "Failed to import module SearchFileName\n";
+    return 1;
+  }
   CPyObject SearchFile_func = PyObject_GetAttrString(Module_SearchAFile, "Search_File");
   PyObject *ADC_name_toPy = PyTuple_New(1);
   PyTuple_SetItem(ADC_name_toPy, 0, PyUnicode_FromString(ADC_File_name));
@@ -183,17 +196,23 @@ int main(int argc, char* argv[]) {
   Py_ssize_t size;
   const char *Complete_ADCfile_name = PyUnicode_AsUTF8AndSize(CompleteFileName.getObject(), &size); // ----> COMPLETE NAME 
   cout << "ADC file: " ;
+  if (!CompleteFileName) {
+    PyErr_Print();  // this will show the actual Python exception
+    std::cerr << "Error: call to Search_File failed" << std::endl;
+    return 1; // or handle differently
+  }
   puts(Complete_ADCfile_name); 
+  Py_Finalize();
   //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
   ///////////////// SLOW CONTROL INFORMATIONS: Working Point, Trigger Rate, External Temperature ///////////
   char SlowControlFileName[100];
-  strcpy(SlowControlFileName,"/media/muraves3/VESUVIO/datiVesuvio/");
+  strcpy(SlowControlFileName,"/workspace/test/RAW_GZ/");
   strncat(SlowControlFileName,color,5);
-  strncat(SlowControlFileName,"/SLOWCONTROL_",30);
-  strncat(SlowControlFileName,color,5);
-  strncat(SlowControlFileName,".txt",5);
+  strncat(SlowControlFileName,"/SLOWCONTROL_run",30);
+  strncat(SlowControlFileName, run_string, 10);
+  //strncat(SlowControlFileName,".txt",5);
  
   ifstream SlowControl(SlowControlFileName);
   string slow_line;
@@ -558,7 +577,7 @@ int main(int argc, char* argv[]) {
   int st, ch;
   vector <int>  strips, channels, sorted_ch,sorted_strips;
   string line_c;  
-  Spiroc_config.open("../../ANALYSIS/ReconstructionTracks_from3to4/config/spiroc-hybrid-map.cfg");
+  Spiroc_config.open("/workspace/Software/tracks_reconstruction/AncillaryFiles/spiroc-hybrid-map.cfg");
   int l=0;
   /// //READING SPIROC/HYRID MAP FILE //////////////////////////////////////////////////////////////
   if(Spiroc_config.is_open()) {
@@ -598,16 +617,22 @@ int main(int argc, char* argv[]) {
 
   ///// USE SINGLE_RUN PED:
   if(useSingleRunPED==1) {
-    strcpy(ConfigPATH,"../../ANALYSIS/ReconstructionTracks_from3to4/config/");
+    strcpy(ConfigPATH,"/workspace/test/PEDESTAL/");
     strcpy(ConfigPed_file,ConfigPATH);
-    char PED_FOLDER[15];
-    strcpy(PED_FOLDER,"ped");
-    strncat(PED_FOLDER,color,6);
-    char Run_PART[50];
-    strcpy(Run_PART,PED_FOLDER);
-    strncat(Run_PART,"/ped_run",20);
-    strncat(Run_PART,run_string,20);
-    strncat(ConfigPed_file,Run_PART,50);
+    //char PED_FOLDER[15];
+    //strcpy(PED_FOLDER,"ped");
+    strncat(ConfigPed_file,color,6);
+    strncat(ConfigPed_file, "/", 1);
+    strncat(ConfigPed_file, run_string, 6);
+    strncat(ConfigPed_file, "/", 1);
+    cout<<ConfigPed_file<<endl;
+    //char Run_PART[50];
+    //strcpy(Run_PART,PED_FOLDER);
+    //strncat(Run_PART,"/ped_run",20);
+    //strncat(Run_PART,run_string,20);
+    //strncat(ConfigPed_file,Run_PART,50);
+    //strncat(ConfigPed_file, PATH_ADC, 100);
+    //strncat(ConfigPed_file, "PEDESTAL/", 30);
   }
   else {
     strcpy(ConfigPATH,"config/");
@@ -620,7 +645,7 @@ int main(int argc, char* argv[]) {
     
   }
     char final_string[30];
-    strcpy(final_string,"/pedestal_"); 
+    strcpy(final_string,"pedestal_"); 
     strncat(ConfigPed_file,final_string,30);
     cout << ConfigPed_file << endl;
   ifstream FilePED;
@@ -682,7 +707,7 @@ int main(int argc, char* argv[]) {
 
   // READ TELESCOPE CONFIGURATION  ----> CORRESPONDACE BOARD - N STATION - VIEW //////// ///////////////////////////////
   char  telescopeConfig_name[10000];
-  strcpy(telescopeConfig_name,"/home/muraves/Desktop/MURAVES/ANALYSIS/ReconstructionTracks_from3to4/config/telescope");
+  strcpy(telescopeConfig_name,"/workspace/Software/tracks_reconstruction/AncillaryFiles/telescope");
   strncat(telescopeConfig_name,color,10);
   strncat(telescopeConfig_name,".cfg",5);
   
@@ -1449,14 +1474,14 @@ int  NGooDTracks4p=0;
   
 
 // CALCULATE THE DURATION OF THE RUN ///////////////////////////////////////////////
-  CPyObject RunDurationModuleName =PyUnicode_FromString("RunDuration");
-  CPyObject RunDurationModule =PyImport_Import(RunDurationModuleName);
-  CPyObject RunnTime_function =PyObject_GetAttrString(RunDurationModule, "runTime");
-  PyObject *RunTime_args =PyTuple_New(2);
-  PyTuple_SetItem(RunTime_args, 0, PyUnicode_FromString(first_line));
-  PyTuple_SetItem(RunTime_args, 1, PyUnicode_FromString(last_line));
-  RunDuration =PyFloat_AsDouble(PyObject_CallObject(RunnTime_function,RunTime_args));
-  cout << "Run Duration: "<<  RunDuration<<" minutes"<<endl;
+  //CPyObject RunDurationModuleName =PyUnicode_FromString("RunDuration");
+  //CPyObject RunDurationModule =PyImport_Import(RunDurationModuleName);
+  //CPyObject RunnTime_function =PyObject_GetAttrString(RunDurationModule, "runTime");
+  //PyObject *RunTime_args =PyTuple_New(2);
+  //PyTuple_SetItem(RunTime_args, 0, PyUnicode_FromString(first_line));
+  //PyTuple_SetItem(RunTime_args, 1, PyUnicode_FromString(last_line));
+  //RunDuration =PyFloat_AsDouble(PyObject_CallObject(RunnTime_function,RunTime_args));
+  //cout << "Run Duration: "<<  RunDuration<<" minutes"<<endl;
   ////////////////////////////////////////////////////////////////////////////////////
 
   cout << "N events with at least a 3p track: " << Nevents_withAtrack3p << endl;
@@ -1684,5 +1709,7 @@ int  NGooDTracks4p=0;
   cout << "Number of events: " << ev <<endl;
   cout << "RUN " << run << " COMPLETED. Find your data in ---> "<< ROOTfileName << endl;
   cout << " Find your  minitree in ---> "<<MiniRunTreeName<< endl;
-  printf("\nEXECUTION TIME: %.1f seconds \n", (double)elapsed);
+  //printf("\nEXECUTION TIME: %.1f seconds \n", (double)elapsed);
+
+
 }

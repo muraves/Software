@@ -1,23 +1,28 @@
 from ROOT  import TFile
 from ROOT import TTree
 from array import array
-import sys
 import argparse as argp
 import functools
+import logging
 
 Description = ' This code takes as input the data from ADC and unpacks them to obtain a track collection '
 parser = argp.ArgumentParser(description = Description)
 parser.add_argument('-data', '--ADCfile', type = open, required = True, help = 'This file cointains data taken by ADCs')
 parser.add_argument('-r','--run', required=True, help = 'run number')
 parser.add_argument('-type','--ADCorPED',required=True)
+parser.add_argument("-info", "--info_board", dest="info_board", nargs="+", required=True,
+                    help="Input nBoards, nInfoBoard and nChannels integer values")
+parser.add_argument("-o", "--output_filename", dest="output_filename", required=True,
+                    help="Name of the output")
 args = parser.parse_args()
 runnumber = str(args.run)
 fileADC = args.ADCfile
 datalines = fileADC.readlines()
 isADCorPED= args.ADCorPED
-nBoards = 12
-nInfoBoard = 39
-nChannels=32
+nBoards = int(args.info_board[0])
+nInfoBoard = int(args.info_board[1])
+nChannels= int(args.info_board[2])
+output_filename = args.output_filename
 
 ####################################################### Reading File ################################################# 
 def Board(n,data):
@@ -54,9 +59,10 @@ args.ADCfile.close()
 #filePED =  TFile("/media/muraves2/CILINDRO/PREANALYZED/"+isADCorPED+"_CILINDRO_run_"+str(runnumber)+".root","recreate")
 #filePED =  TFile("/media/muraves3/CILINDRO/IAEA/PREANALYZED/WP_100Hz/"+isADCorPED+"_CILINDRO_run_"+str(runnumber)+".root","recreate")
 #filePED =  TFile("/media/muraves3/CILINDRO/IAEA/PREANALYZED/FREESKY_NUC/"+isADCorPED+"_CILINDRO_run_"+str(runnumber)+".root","recreate")
-filePED =  TFile("/media/muraves3/MURAY/PREANALYSIS/"+isADCorPED+"_run_"+str(runnumber)+".root","recreate")
-tree = TTree("ped_tree","tree pedestal")
+filePED =  TFile(output_filename,"recreate")
+tree = TTree("Tree","Tree")
 
+temperature = array('i', [0])
 scheda =array('i',[0]) 
 adc_0 = array('i',[0])
 adc_1 = array('i',[0])
@@ -92,6 +98,7 @@ adc_30 = array('i',[0])
 adc_31 = array('i',[0])
 
 tree.Branch("scheda",scheda,"scheda/I")
+tree.Branch("temperature", temperature, "temperature/I")
 tree.Branch("adc_0",adc_0,"adc_0/I")
 tree.Branch("adc_1",adc_1,"adc_1/I")
 tree.Branch("adc_2",adc_2,"adc_2/I")
@@ -116,7 +123,7 @@ tree.Branch("adc_20",adc_20,"adc_20/I")
 tree.Branch("adc_21",adc_21,"adc_21/I")
 tree.Branch("adc_22",adc_22,"adc_22/I")
 tree.Branch("adc_23",adc_23,"adc_23/I")
-tree.Branch("adc_24",adc_24,"adc24/I")
+tree.Branch("adc_24",adc_24,"adc_24/I")
 tree.Branch("adc_25",adc_25,"adc_25/I")
 tree.Branch("adc_26",adc_26,"adc_26/I")
 tree.Branch("adc_27",adc_27,"adc_27/I")
@@ -129,6 +136,7 @@ tree.Branch("adc_31",adc_31,"adc_31/I")
 
 for  ev in Events:
     for board in range(nBoards):
+        temperature[0] = int(ev[board]["temperature"])
         scheda[0] = int(ev[board]['boardNumber'])
         adc_0[0]= ev[board]['channels'][0]
         adc_1[0] = ev[board]['channels'][1]
