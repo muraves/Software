@@ -1,7 +1,5 @@
-import gzip
-import shutil
+
 from pathlib import Path
-import tempfile
 import argparse
 from glob import glob
 import parserer
@@ -10,48 +8,7 @@ import logging
 import json
 import time
 import re
-
-def decompress(filename) -> str:
-    gz_path = Path(filename)
-    out_filename = Path(str(gz_path.with_suffix("")).replace("RAW_GZ", "DECOMPRESSED"))# removes .gz extension
-    out_path = str(out_filename.parent)
-    os.makedirs(out_path, exist_ok=True)
-
-
-    ctrl = 0
-    if not gz_path.exists():
-        logging.error(f"{gz_path} does not exist.")   
-        ctrl=1     
-    if out_filename.exists():
-        logging.info(f"Uncompressed file {out_filename} already exists. Skipping.")
-        #sys.exit(0)
-        ctrl=1
-    err = None
-    if ctrl==0:
-        try:
-            # create temp file in the same directory to ensure atomic rename
-            with tempfile.NamedTemporaryFile(delete=False, dir=out_filename.parent) as tmp_file:
-                tmp_name = tmp_file.name
-                with gzip.open(gz_path, 'rb') as f_in:
-                    shutil.copyfileobj(f_in, tmp_file)
-    
-            # atomic move to final destination
-            Path(tmp_name).rename(out_filename)
-            logging.debug(f"Successfully uncompressed {gz_path} → {out_filename}")
-        except Exception as e:
-            # if something goes wrong, remove the temp file
-            if 'tmp_name' in locals() and Path(tmp_name).exists():
-                Path(tmp_name).unlink()
-            err = f'Decompression failed'
-            logging.error(f"{err} for {gz_path}: {e}")
-            file_path = Path(out_filename)
-            file_path.touch(exist_ok=True)
-    return str(out_filename), err
-    
-    
-
-
-
+from utils import file_handler
 
 parser = argparse.ArgumentParser(description='Input configuration for cutting script')
 parser.add_argument("-t", "--type", dest="type", required=True,
@@ -80,6 +37,7 @@ input_log = Path(args.input_optional_files[1])
 input_conteggi = Path(args.input_optional_files[2])
 rawfile_path = str(input_log.parent)
 output_filename = args.output_filename
+file_path = Path(output_filename)
 events_number = args.n_events
 rows_to_combine = args.rows_to_combine
 log_file = args.log_file
@@ -131,7 +89,7 @@ for subrun in subrun_list:
     "error": [],
     "runtime": None
     }
-    decompressed_filename, error = decompress(subrun)
+    decompressed_filename, error = file_handler.decompress(subrun)
     subrun_dict["id"] = decompressed_filename.split("_")[-1]
     if error is not None:
         subrun_dict["status"] = "failed"
@@ -139,23 +97,23 @@ for subrun in subrun_list:
         result["status"] = "failed"
     logging.info(f"parsing  {decompressed_filename} ")
     print(f"parsing {decompressed_filename} ")
+    ctrl = 0
     try:
         if "NERO" in rawfile_path.split("/"):
             print("Parsing data from NERO")
-            parserer.parser_nero(decompressed_filename, output_filename, events_number, rows_to_combine )
+            ctrl = parserer.parser_nero(decompressed_filename, output_filename, events_number, rows_to_combine )
         elif "ROSSO" in rawfile_path.split("/"):
             print("Parsing data from ROSSO")
-            parserer.parser_rosso(decompressed_filename, output_filename, events_number, rows_to_combine )
+            ctrl = parserer.parser_rosso(decompressed_filename, output_filename, events_number, rows_to_combine )
         elif "BLU" in rawfile_path.split("/"): 
             print("Parsing data from BLU")
-            parserer.parser_blu(decompressed_filename, output_filename, events_number, rows_to_combine )
+            ctrl = parserer.parser_blu(decompressed_filename, output_filename, events_number, rows_to_combine )
         else:
             NameError("Data path must contain the color of the hodoscope. Retry.")
             exit(1)   
     except:
         error = "Parsing failed"
         logging.error(error)
-        file_path = Path(output_filename)
         file_path.touch(exist_ok=True)
         subrun_dict["status"] = "failed"
         subrun_dict["error"].append(error)
@@ -164,18 +122,40 @@ for subrun in subrun_list:
         os.remove(decompressed_filename)
         subrun_dict["runtime"] = round(time.time() - start_subrun, 2)
         result["subruns"].append(subrun_dict)
+        if ctrl == 1:
+            error = "Parsing failed"
+            logging.error(error)
+            file_path.touch(exist_ok=True)
+            subrun_dict["status"] = "failed"
+            subrun_dict["error"].append(error)
+            result["status"] = "failed"
+
 
 end_global = time.time()
 logging.debug(f"End [{end_global}]")
 result["runtime"] = round(end_global- start_global, 2)
+
+# Quality control on Parsed file:
+# X if status is failed -> create an empty file
+# V Relative ev. number must be the same 16 times in the same row
+# 
+
+try:
+    rel_ev_num_check_errors = parserer.check_event_number_spacing(output_filename, 39, 0)
+    if len(rel_ev_num_check_errors) > 0:
+        logging.error[f"Parser file didn't satisfy minimal check on relative event number and reported the following mismatches: \n {rel_ev_num_check_errors}"]
+except:
+    if file_path.exists():
+        file_path.unlink()     # delete the file
+        file_path.touch() 
 
 
 # Read SLOWCONTROL and store relevant info
 if not input_slowcontrol.is_file():
     logging.warning(f"Slow control file not found: {input_slowcontrol}. Slowcontrol dictionary will be empty.")
 else:
-    decompressed_slowfile, error = decompress(input_slowcontrol)
-    slowcontrol_dict = parserer.parse_slow_control(decompressed_slowfile, run)
+    decompressed_slowfile, error = file_handler.decompress(input_slowcontrol)
+    slowcontrol_dict = file_handler.parse_slow_control(decompressed_slowfile, run)
     result["slowcontrol"] = slowcontrol_dict
     #os.remove(decompressed_slowfile)
 
@@ -183,16 +163,16 @@ else:
 if not input_log.is_file():
     logging.warning(f"Input log file not found: {input_log}. Log dictionary will be empty.")
 else:
-    decompressed_logfile, error = decompress(input_log)
-    log_dict = parserer.parse_log_file(decompressed_logfile, run)
+    decompressed_logfile, error = file_handler.decompress(input_log)
+    log_dict = file_handler.parse_log_file(decompressed_logfile, run)
     result['log'] = log_dict
 
 # Read CONTEGGI
 if not input_conteggi.is_file():
     logging.warning(f"Input conteggi file not found: {input_conteggi}. Log dictionary will be empty.")
 else:
-    decompressed_conteggifile, _ = decompress(input_conteggi)
-    conteggi_dict = parserer.parse_conteggi(decompressed_conteggifile)
+    decompressed_conteggifile, _ = file_handler.decompress(input_conteggi)
+    conteggi_dict = file_handler.parse_conteggi(decompressed_conteggifile)
     result['conteggi'] = conteggi_dict
     
 # NB: Cannot delete decompressed LOG, CONTEGGI, SLOW because when running in parallel could rise problem as the file is the same for ADC and PIEDISTALLI

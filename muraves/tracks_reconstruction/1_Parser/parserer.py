@@ -8,7 +8,7 @@ def parser_nero(fileoutp, mod, numEVT, numSk):
     run = int(infoCounter[2].replace('run', '')) - 1
     subrun = int(infoCounter[3].replace('sr', '')) - 1
     triggerTot = 0 + subrun*int(numEVT) + run*eventsTot
-    brokenF = open('BROKENFILELIST.txt', 'a')
+    #brokenF = open('BROKENFILELIST.txt', 'a')
 
     for ii in range (0,1):
         #fileoutp = sys.argv[1]
@@ -149,9 +149,10 @@ def parser_nero(fileoutp, mod, numEVT, numSk):
 
         else :
             print("\n STATUS : Skip File\n")
-            brokenF.write(fileoutp + '\n')
-
-    brokenF.close()
+            
+            #brokenF.write(fileoutp + '\n')
+    return CK
+    #brokenF.close()
 
 
 def parser_rosso(fileoutp, mod, numEVT, numSk):
@@ -160,7 +161,7 @@ def parser_rosso(fileoutp, mod, numEVT, numSk):
     run = int(infoCounter[2].replace('run', '')) - 1
     subrun = int(infoCounter[3].replace('sr', '')) - 1
     triggerTot = 0 + subrun*int(numEVT) + run*eventsTot
-    brokenF = open('BROKENFILELIST.txt', 'a')
+    #brokenF = open('BROKENFILELIST.txt', 'a')
     
     for ii in range (0,1):
         inputF = open(fileoutp, 'r')
@@ -288,9 +289,10 @@ def parser_rosso(fileoutp, mod, numEVT, numSk):
     
         else :
             print("\n STATUS : Skip File\n")
-            brokenF.write(fileoutp + '\n')
+            #brokenF.write(fileoutp + '\n')
     
-    brokenF.close()
+    #brokenF.close()
+    return CK
 
 def parser_blu(fileoutp, mod, numEVT, numSk):
 
@@ -300,7 +302,7 @@ def parser_blu(fileoutp, mod, numEVT, numSk):
     run = int(infoCounter[2].replace('run', '')) - 1
     subrun = int(infoCounter[3].replace('sr', '')) - 1
     triggerTot = 0 + subrun*int(numEVT) + run*eventsTot
-    brokenF = open('BROKENFILELIST.txt', 'a')
+    #brokenF = open('BROKENFILELIST.txt', 'a')
     
     for ii in range (0,1):
         fileoutp = fileoutp
@@ -429,147 +431,97 @@ def parser_blu(fileoutp, mod, numEVT, numSk):
     
         else :
             print("\n STATUS : Skip File\n")
-            brokenF.write(fileoutp + '\n')
+            #brokenF.write(fileoutp + '\n')
     
-    brokenF.close()
+    #brokenF.close()
+    return CK
     
-def parse_slow_control(filename, target_run)-> dict:
-    """
-    Reads a one-line slow-control TSV file.
-    Requirements:
-      - File has exactly one meaningful line
-      - Column 0 must match target_run
-      - Must have at least 44 columns
 
-    Returns:
-      {"temperature": float, "wp": float, "tr": float} 
-    or None if validation fails.
+
+
+
+def insertion_test(a: int, b: int) -> bool:
     """
+    Returns True if inserting exactly one bit (0 or 1)
+    anywhere into the binary string of 'a' can make it equal to 'b',
+    or vice versa.
+    """
+
+    ba = bin(a)[2:]
+    bb = bin(b)[2:]
+
+    # One must be exactly one bit longer than the other
+    if abs(len(ba) - len(bb)) != 1:
+        return False
+
+    # Identify shorter and longer
+    short, long = (ba, bb) if len(ba) < len(bb) else (bb, ba)
+
+    # Try inserting '0' or '1' into every possible position of short
+    for i in range(len(short) + 1):
+        for bit in ('0', '1'):
+            new = short[:i] + bit + short[i:]
+            if new == long:
+                return True
+
+    return False
+
+def check_event_number_spacing(filename, block_size=39, line_to_print =1):
+    """
+    For each row:
+      - Extract the event number from the second field.
+      - Verify that the same event number appears again every `block_size` items.
+
+    A row is considered valid if, for k = 1, 2, ..., it holds that:
+        tokens[k * block_size + 1] == event_number
+
+    Returns a list of (line_number, message) errors.
+    """
+    logging.debug("Runing relative events number check...")
+    errors = []
 
     with open(filename, "r") as f:
+        for line_number, line in enumerate(f, start=1):
 
-        return_list = []
-    
-        for line in f:
-            slowcontrol_dict = None
-        #line = f.readline().strip()
-            cols = line.strip().split("\t")
-            # Check column count
-            if len(cols) < 44:
-                logging.error(
-                    f"Slow control file has only {len(cols)} columns, expected at least 44."
-                )
-                slowcontrol_dict =  None
+            tokens = line.strip().split("\t")
 
-            # Validate run number
+            if len(tokens) < 2:
+                errors.append((line_number, "Row too short to contain event number"))
+                continue
+
             try:
-                run = int(float(cols[0]))
-                if run != target_run:
-                    logging.warning(
-                    f"Run mismatch: file has run {run}, expected {target_run}."
-                )
+
+                event_number = int(tokens[1])
+                if line_number==line_to_print:
+                    print('Event number: ', event_number)
             except ValueError:
-                logging.error("Run not found")
-                run = None    
-            try:
-                temperature = float(cols[3])
-            except ValueError:
-                logging.error("Could not retrieve effective temperature.")
-                temperature = None
-            try:
-                wp = float(cols[5])
-            except ValueError:
-                logging.error("Could not retrieve working point temperature.")
-                wp = None
-            try:
-                tr = float(cols[43])
-            except ValueError:
-                logging.error("Could not retrieve tr.")
-                tr = None
+                errors.append((line_number, "Invalid event number in column 2"))
+                continue
 
-            slowcontrol_dict = {
-                "run": run,
-                "temperature": temperature,
-                "wp": wp,
-                "tr": tr,
-            }
-            return_list.append(slowcontrol_dict)
-    return return_list
+            # Now check repeating event numbers every block_size columns
+            # The event number should appear at token positions: 1, 1+block_size, 1+2*block_size, ...
+            idx = 1
+            block_index = 1
 
-def parse_log_file(file_path, target_run)-> dict:
-    """
-    Reads a LOG file and extracts:
-      - timestamp  (col 1)
-      - trigger_rate (col 43)
-      - accidental_rate (col 44)
-      - OR32 counts (cols 45–60 : 16 values)
-    The run (col 0) must match target_run.
-    
-    Returns a dictionary with these values (run excluded).
-    """
-
-    data = {}
-    or32_counts = {}
-    run = None
-
-    with open(file_path, 'r') as f:
-        raw_lines = f.readlines()
-
-    for i, raw_line in enumerate(raw_lines):
-        line = raw_line.strip()
-        if line.startswith("Current run"):
-           run = int(line.split(":")[1].strip())
-        elif line.startswith("Timestamp"):
-            data["timestamp"] = int(line.split(":")[1].strip())
-        elif line.startswith("Trigger rate"):
-            data["trigger_rate"] = float(line.split(":")[1].strip())
-        elif line.startswith("Accidental rate"):
-            data["accidental_rate"] = float(line.split(":")[1].strip())
-        elif line.startswith("OR32 Counts"):
-            # OR32 counts start after this line
-            for count_line in raw_lines[i+1:]:
-                cl = count_line.strip()
-                if not cl:
-                    continue
-                
-                # Stop if we reach next section (non-numeric lines)
-                parts = cl.split()
-                if len(parts) != 2:
+            while idx < len(tokens):
+                try:
+                    value = int(tokens[idx])
+                    if line_number==line_to_print:
+                        print(value)
+                except ValueError:
+                    errors.append((line_number, f"Non-integer token at position {idx}"))
                     break
-                
-                key, value = parts
-                or32_counts[int(key)] = float(value)
 
-            break  # all remaining lines are OR32 counts
+                if value != event_number and not insertion_test:
+                    errors.append(
+                        (line_number,
+                         f"Event number mismatch at block {block_index}: "
+                         f"found {value}, expected {event_number}")
+                    )
+                    break
 
-    data["OR32_counts"] = or32_counts
-    if int(run)!=int(target_run):
-        logging.error(f"Run mismatch: file has run {run}, expected {target_run}.")
-        data = None
+                idx += block_size
+                block_index += 1
 
-    return data
+    return errors
 
-def parse_conteggi(file_path) -> list:
-    data = []
-
-    with open(file_path, "r") as f:
-        for line in f:
-            parts = line.strip().split("\t")
-            if len(parts) < 36:
-                continue  # skip incomplete lines
-            
-            board_idx = int(parts[0])
-            channels = [int(x) for x in parts[1:33]]  # 32 channels
-            total_or = int(parts[33])
-            flag = int(parts[34])
-            timestamp = int(parts[35])
-
-            data.append( {
-                "board": board_idx,
-                "channels": channels,
-                "total_or": total_or,
-                "flag": flag,
-                "timestamp": timestamp
-            })
-
-    return data

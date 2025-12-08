@@ -1,0 +1,34 @@
+! Responsible : Alice Biolchini
+! Purpose     : Tag the version of the workflow for MuRaVes trak reconstruction and run monitoring
+! Legend      : `vX.n.k` (version), X changes when major modifications are made that require re-processing of data.
+!                                       *e.g.* Change algorithm, new/change clustering/tracking requirement, new/change chi2 selection, ...                          
+!                                   n changes for intermediate modifications; substantial updates, but output data remain compatible with previous version.
+!                                       *e.g.* Change of python pakage, update of snakemake version, necessity to update container or environment.
+!                                   k changes for small bug fixes or documentation updates.     
+! Date        : yyyy-mm-dd           
+!-----------------------------------------------------------------------------
+
+
+!================ Workflow tag v0.1.0 2025-11-26 ==================================
+|Description:
+|   - Snakemake implementation
+|       This version of the workflow can be run from everywhere - also on T2B 
+|Release:
+|   https://github.com/muraves/Software/releases/tag/v0.1.0
+
+!================ Workflow tag v0.0.1 2025-11-24 ==================================
+|Description:
+|   - Missing files necessary to run scripts have been integrated from MURIPPER
+|       The script **still** have hardcoded paths: they are only executable on MURIPPER.
+|   - Documentation is now available
+|   - Possibility to use SMuRaVes container to run scripts (documentation available)
+|Release:
+|   https://github.com/muraves/Software/releases/tag/v0.0.1
+
+
+!================ Workflow tag v0.0.0 2025-09-24 ==================================
+|Description:
+| - Series of scripts collected by YANWEN from the server MURIPPER that together constitute the MuRaVes Software.
+| - The script have hardcoded paths: in the current version they are only executable on MURIPPER.
+|Release: 
+|   https://github.com/muraves/Software/releases/tag/v0.0.0
