@@ -60,3 +60,12 @@ yarn-error.log
 # C++ build #
 #############
 build/
+
+# data files #
+############
+*.pkl
+*.csv
+
+# snakemake #
+################
+*.snakemake/
