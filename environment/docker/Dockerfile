@@ -39,3 +39,6 @@ WORKDIR /workspace
 # Run entrypoint
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["bash"]
+
+##! Once muraves_lib is sully developed, better to put the installation here
+##! so that the image can be used directly without mounting the code.

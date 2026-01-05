@@ -1,6 +1,6 @@
 [project]
 
-name = "muraves-project"   # nome del package (a tua scelta)
+name = "muraves-lib"   # nome del package (a tua scelta)
 version = "0.0.0"
 description = "Project for analysis and monitoring of MuRaVes data"
 readme = "README.md"
@@ -11,5 +11,5 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["utils"]   # i pacchetti che vuoi includere
+packages = ["muraves_lib"]   # i pacchetti che vuoi includere
 

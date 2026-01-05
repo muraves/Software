@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import utils
+import muraves_lib
 import plots
 
 def time_plot(var, time, **kwargs):
@@ -39,16 +39,16 @@ def run_plots(
 
     for run in run_range:
         runs.append(run)
-        info = utils.read_run_info_from_json(
+        info = muraves_lib.read_run_info_from_json(
            parsed_files_path + f'ADC_run{run}.json'
         )
         info_list.append(info)
 
-    trs = utils.extract_var("trigger_rate", info_list)
-    ars = utils.extract_var("accidental_rate", info_list)
-    times = utils.extract_time(info_list)
-    temperatures = utils.extract_var("temperature", info_list)
-    wps = utils.extract_var("working_point", info_list)
+    trs = muraves_lib.extract_var("trigger_rate", info_list)
+    ars = muraves_lib.extract_var("accidental_rate", info_list)
+    times = muraves_lib.extract_time(info_list)
+    temperatures = muraves_lib.extract_var("temperature", info_list)
+    wps = muraves_lib.extract_var("working_point", info_list)
 
     if trigger_rate:
         plots.time_plot(np.array(trs), np.array(runs),

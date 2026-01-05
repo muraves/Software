@@ -8,7 +8,7 @@ import logging
 import json
 import time
 import re
-from utils import file_handler
+from muraves_lib import file_handler
 
 parser = argparse.ArgumentParser(description='Input configuration for cutting script')
 parser.add_argument("-t", "--type", dest="type", required=True,

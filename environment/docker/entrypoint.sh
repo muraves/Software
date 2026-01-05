@@ -29,6 +29,11 @@ else
     exit 1
 fi
 
+# -------------------------
+# Install muraves_lib
+# -------------------------
+cd /workspace/Software
+python -m pip install -e . --quiet
 
 # Check if /workspace is empty or not a git repo
 if [ ! -d "/workspace/.git" ]; then

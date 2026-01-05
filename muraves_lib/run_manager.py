@@ -3,8 +3,8 @@ __all__ = ['get_orientation', 'create_database']
 
 from glob import glob
 import pandas as pd
-from utils import run_manager
-from utils import file_handler
+from muraves_lib import run_manager
+from muraves_lib import file_handler
 from tqdm import tqdm
 import logging
 import numpy as np
