@@ -7,6 +7,16 @@ MURAVES data analysis
 
 The `muraves-env` docker image is used to perform the analysis of MuRaVes data.
 
+### Step-by-step
+
+1. Clone the Git repository in your personal space (`/my/space/`): `git clone https://github.com/muraves/Software.git` . 
+2. Now you should have the repository `Software` here: `/my/space/Software`
+3. Modify the file `/my/space/Software/environment/run_muraves_env.sh`, line: `WORKSPACE_HOST="path/to/your/git/repo"`. Remove the puth and put you own path to the repository (`/my/space/`)
+4. Run the following commands to make two files executable:
+  1. `chmod +x /my/space/Software/environment/entrypoint.sh`
+  2. `chmod +x /my/space/Software/environment/run_muraves_env.sh`
+5. Activate Muraves container by running: ` bash /my/space/Software/environment/run_muraves_env.sh`
+6. The container is now activated with all the necessary packages and libraries already installed.
 
 
 ## Use the container on T2B
