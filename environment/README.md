@@ -10,7 +10,7 @@ I updated the repository. Now you can follow these steps to activate the muraves
 
 I updated the repository. Now you can follow these steps to activate the muraves container, from there you can use muraves_lib and the scripts that I sent you
 
-### Step-by-step
+### Step-by-step: Set up your workspace
 
 1. Connect to T2B
 2. Download last version of setup_muraves.sh by doing `wget https://raw.githubusercontent.com/muraves/Software/refs/heads/master/environment/docker/setup_muraves.sh`
