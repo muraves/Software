@@ -30,7 +30,7 @@ mkdir -p "$WORKSPACE_HOST"
 # Clone repository if not present
 REPO_URL="https://github.com/muraves/Software.git"
 WORKSPACE_REPO="$WORKSPACE_HOST/Software"
-if [ ! -d "$WORKSPACE_REPO/Software" ]; then
+if [ ! -d "$WORKSPACE_REPO" ]; then
     echo "Cloning Muraves repository..."
     git clone "$REPO_URL" "$WORKSPACE_REPO"
 else
@@ -43,7 +43,7 @@ cd "$WORKSPACE_REPO"
 
 # Ensure scripts are executable
 chmod +x environment/docker/entrypoint.sh
-chmod +x environment/docker/run_muraves_env.sh
+#chmod +x environment/docker/run_muraves_env.sh
 
 # Path to your Singularity image
 SIF_PATH="/group/Muography/MURAVES/container/muraves-env.sif"

@@ -12,16 +12,20 @@ I updated the repository. Now you can follow these steps to activate the muraves
 
 ### Step-by-step
 
-1. Clone the Git repository in your personal space (`/my/space/`): `git clone https://github.com/muraves/Software.git` . 
-2. Now you should have the repository `Software` here: `/my/space/Software`
-3. Modify the file `/my/space/Software/environment/run_muraves_env.sh`, line: `WORKSPACE_HOST="path/to/your/git/repo"`. Remove the path and put the path to your repository (`/my/space/`)
-4. Run the following commands to make two files executable:
-  1. `chmod +x /my/space/Software/environment/entrypoint.sh`
-  2. `chmod +x /my/space/Software/environment/run_muraves_env.sh`
-5. Activate Muraves container by running: ` bash /my/space/Software/environment/run_muraves_env.sh`
-6. Type `conda activate muraves` to enter the conda environment
-7. To be able to run jupyter notebooks activate a connection from inside the container by typing: `jupyter notebook --no-browser --ip=0.0.0.0 --port=8888`. This will keep running to maintain the connection. 
-8. Among the output you should read an URL like: `http://127.0.0.1:8888/tree?token=6324779336ad8ec1c039f80218f0128fa5a86ff6c8abda72`.
+1. Connect to T2B
+2. Download last version of setup_muraves.sh by doing `wget https://raw.githubusercontent.com/muraves/Software/refs/heads/master/environment/docker/setup_muraves.sh`
+3. Make it executable `chmod +x setup_muraves.sh`
+4. Execute: `./setup_muraves.sh`. It will ask for the folder where you want/have your git repository to be. By default is your home directory. 
+5. If succeded, congratulations! The container is installed and running.
+6. Type `conda activate muraves` to enter the conda environment, where softwares like ROOT, PYTHON, SNAKEMAKE ... are available.
+
+### Editor: Visual Studio Code
+The choice of the editor is personal, read scripts with your favourite editor. However, it can be handy to ssh to T2B directly from your editor and open the scripts as if you were working on your local laptop. For this reason VSCode comes handy. On VSCode it's available an estension called Remote-SSH provided by Microsoft that allows you to tunnel directly to T2B.
+
+
+### Run Jupyter notebooks (.ipynb files)
+1. To be able to run jupyter notebooks activate a connection from inside the container by typing: `jupyter notebook --no-browser --ip=0.0.0.0 --port=8888`. This will keep running to maintain the connection. 
+2. Among the output you should read an URL like: `http://127.0.0.1:8888/tree?token=6324779336ad8ec1c039f80218f0128fa5a86ff6c8abda72`.
 9a. You can copy and paste this URL on your favourite browser and execute the notebook from there.
 9b. Alternatively, if you wish to use VSCode, follow these steps:
  - Open the notebook
