@@ -45,4 +45,7 @@ else
 fi
 
 # Start bash (or whatever CMD is given)
-exec "$@"
+echo "[INFO] Container ready."
+
+exec /bin/bash
+
