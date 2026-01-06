@@ -6,17 +6,37 @@ MURAVES data analysis
 # Muraves environment - Docker
 
 The `muraves-env` docker image is used to perform the analysis of MuRaVes data.
+I updated the repository. Now you can follow these steps to activate the muraves container, from there you can use muraves_lib and the scripts that I sent you
+
+I updated the repository. Now you can follow these steps to activate the muraves container, from there you can use muraves_lib and the scripts that I sent you
 
 ### Step-by-step
 
 1. Clone the Git repository in your personal space (`/my/space/`): `git clone https://github.com/muraves/Software.git` . 
 2. Now you should have the repository `Software` here: `/my/space/Software`
-3. Modify the file `/my/space/Software/environment/run_muraves_env.sh`, line: `WORKSPACE_HOST="path/to/your/git/repo"`. Remove the puth and put you own path to the repository (`/my/space/`)
+3. Modify the file `/my/space/Software/environment/run_muraves_env.sh`, line: `WORKSPACE_HOST="path/to/your/git/repo"`. Remove the path and put the path to your repository (`/my/space/`)
 4. Run the following commands to make two files executable:
   1. `chmod +x /my/space/Software/environment/entrypoint.sh`
   2. `chmod +x /my/space/Software/environment/run_muraves_env.sh`
 5. Activate Muraves container by running: ` bash /my/space/Software/environment/run_muraves_env.sh`
-6. The container is now activated with all the necessary packages and libraries already installed.
+6. Type `conda activate muraves` to enter the conda environment
+7. To be able to run jupyter notebooks activate a connection from inside the container by typing: `jupyter notebook --no-browser --ip=0.0.0.0 --port=8888`. This will keep running to maintain the connection. 
+8. Among the output you should read an URL like: `http://127.0.0.1:8888/tree?token=6324779336ad8ec1c039f80218f0128fa5a86ff6c8abda72`.
+9a. You can copy and paste this URL on your favourite browser and execute the notebook from there.
+9b. Alternatively, if you wish to use VSCode, follow these steps:
+ - Open the notebook
+ - on the top right click on the kernel
+ - Click 'select another kernel'
+ - Click 'Existing jupyter Server'
+ - Paste here the URL and press enter.
+ - Select the kernel among those available in the container (in my case, it was named Python 3 (ipykernel))
+ - Now you are able to run the notebook on VSCode, note that the first run may take some time to connect to the kernel, that's normal.
+
+**NB: Using a container it's exactly like using another laptop which has only a few folder in common with T2B:**
+  - You can pull and push from Git
+  - Changes to scripts are persistent (meaning outside the container)
+  BUT:
+  - Changes to the software installed in the container (new conda envs, new python packages, new libriaries, etc.) are temporary and exist only during your current session.
 
 
 ## Use the container on T2B

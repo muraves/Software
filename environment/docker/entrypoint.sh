@@ -46,6 +46,7 @@ fi
 
 # Start bash (or whatever CMD is given)
 echo "[INFO] Container ready."
+# stay interactive
+exec bash -i
 
-exec /bin/bash
 
