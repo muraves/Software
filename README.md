@@ -7,7 +7,7 @@ Most recent dicussed topics can be found in the minutes of:
 Starterkit
 ===
 :blue_book: *Standardizing software is essential for reproducible analyses. Containers make this possible. The following section explains how to set up your workspace to run Muraves scripts.*\
-**Maintainer:** Alice Biolchini(alice.biolchini@uclouvain.be)
+**Maintainer:** Alice Biolchini(alice.biolchini@uclouvain.be), please report any problem you may found.
 
 ### Step-by-step: set your workspace (locally or on T2B)
 1. Connect to T2B (computing cluster of VUB)
@@ -15,17 +15,20 @@ Starterkit
 3. Make it executable `chmod +x setup_muraves.sh`
 4. Execute: `./setup_muraves.sh`. It will ask for the folder where you want/have your git repository to be. By default is your home directory. 
 5. If succeded, congratulations! The container is installed and running.
-6. Type `conda activate muraves` to enter the conda environment, where softwares like ROOT, PYTHON, SNAKEMAKE ... are available.
+
+Several softwares like ROOT, PYTHON, SNAKEMAKE ... are available. Python comes with several fundamental packages like numpy, pandas, matplotlib, scipy, zfit and uproot. You can try to run exaple scripts to fimiliarise with the container.
 
 ### Editor: Visual Studio Code
 The choice of the editor is personal, read scripts with your favourite editor. However, it can be handy to ssh to T2B directly from your editor and open the scripts as if you were working on your local laptop. For this reason VSCode comes handy. On VSCode it's available an estension called Remote-SSH provided by Microsoft that allows you to tunnel directly to T2B.
 
 
 ### Run Jupyter notebooks (.ipynb files)
-1. To be able to run jupyter notebooks activate a connection from inside the container by typing: `jupyter notebook --no-browser --ip=0.0.0.0 --port=8888`. This will keep running to maintain the connection. 
-2. Among the output you should read an URL like: `http://127.0.0.1:8888/tree?token=6324779336ad8ec1c039f80218f0128fa5a86ff6c8abda72`.
-9a. You can copy and paste this URL on your favourite browser and execute the notebook from there.
-9b. Alternatively, if you wish to use VSCode, follow these steps:
+Unfortunately, to be able to run jupiter notebooks within the environment requires a couple of steps more:
+1. Activate a connection from inside the container by typing: `jupyter notebook --no-browser --ip=0.0.0.0 --port=8888`. This will keep running to maintain the connection. 
+2. Among the output you should read an URL, something like: `http://127.0.0.1:8888/tree?token=6324779336imafakeurljusttoshowyou72`.
+3. At this point you have two choises:
+4. (a) Copy and paste the URL you get on your favourite browser and execute the notebook from there.
+4. (b) Alternatively, if you wish to use VSCode, follow these steps:
  - Open the notebook
  - on the top right click on the kernel
  - Click 'select another kernel'

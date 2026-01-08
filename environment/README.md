@@ -5,10 +5,7 @@ MURAVES data analysis
 
 # Muraves environment - Docker
 
-The `muraves-env` docker image is used to perform the analysis of MuRaVes data.
-I updated the repository. Now you can follow these steps to activate the muraves container, from there you can use muraves_lib and the scripts that I sent you
-
-I updated the repository. Now you can follow these steps to activate the muraves container, from there you can use muraves_lib and the scripts that I sent you
+The *muraves-env* container is used to perform analysis of MuRaVes data. A container can be thought of as a snapshot of a virtual machine: no matter what changes are made while using it, it always starts from the same initial state captured in the snapshot. However, it is possible to connect local folders to the container. These connected folders, called "mounted" folders, are not temporary: any changes made inside these folders from within the container are persistent and visible outside the container as well. This allows you to develop scripts or modify files without losing your work, while still benefiting from a standardized, consistent set of software and packages inside the container.
 
 ### Step-by-step: Set up your workspace
 
@@ -17,7 +14,8 @@ I updated the repository. Now you can follow these steps to activate the muraves
 3. Make it executable `chmod +x setup_muraves.sh`
 4. Execute: `./setup_muraves.sh`. It will ask for the folder where you want/have your git repository to be. By default is your home directory. 
 5. If succeded, congratulations! The container is installed and running.
-6. Type `conda activate muraves` to enter the conda environment, where softwares like ROOT, PYTHON, SNAKEMAKE ... are available.
+  
+Several softwares like ROOT, PYTHON, SNAKEMAKE ... are available. Python comes with several fundamental packages like numpy, pandas, matplotlib, scipy, zfit and uproot. You can try to run exaple scripts to fimiliarise with the container.
 
 ### Editor: Visual Studio Code
 The choice of the editor is personal, read scripts with your favourite editor. However, it can be handy to ssh to T2B directly from your editor and open the scripts as if you were working on your local laptop. For this reason VSCode comes handy. On VSCode it's available an estension called Remote-SSH provided by Microsoft that allows you to tunnel directly to T2B.
@@ -115,7 +113,7 @@ T2B do not support docker. Therefore a few step are necessary in order to bring 
   ```
 - Copy the tar file on T2B. Better using rsync as it is a file of ~6GB:
   ```bash
-  rsync -avP /home/biolchini/Documents/muography/MURAVES/Software/environment/docker/muraves-env.tar  abiolchi@mlong.iihe.ac.be:/group/Muography/container/.
+  rsync -avP /home/biolchini/Documents/muography/MURAVES/Software/environment/docker/muraves-env.tar  abiolchi@mlong.iihe.ac.be:/group/Muography/MURAVES/container/.
   ```
   Remember to substituting the path and the username.
 - Login to T2B and build the image using 'singularity':
@@ -130,7 +128,7 @@ T2B do not support docker. Therefore a few step are necessary in order to bring 
   ```
 - Now run
     ```bash
-     ./run_muraves_env/sh
+     ./run_muraves_env.cd sh
     ```
   The container and the environment are running
 

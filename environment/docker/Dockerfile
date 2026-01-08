@@ -21,10 +21,20 @@ RUN mamba create -n muraves -y -c conda-forge -c bioconda\
     uproot && \
     mamba clean -afy
 
-# Automatically activate environment
-RUN echo "conda activate muraves" >> ~/.bashrc
-SHELL ["bash", "--login", "-c"]
-SHELL ["conda", "run", "-n", "muraves", "/bin/bash", "-c"]
+# ---- Apptainer-safe conda setup ----
+ENV CONDA_ENVS_DIRS=/opt/conda/envs
+ENV CONDA_PKGS_DIRS=/opt/conda/pkgs
+
+ENV CONDA_DEFAULT_ENV=muraves
+ENV CONDA_PREFIX=/opt/conda/envs/muraves
+ENV PATH=/opt/conda/envs/muraves/bin:$PATH
+ENV PS1="_MURAVES-Container_\[\e[32m\]\u@\h:\w\$ \[\e[0m\]"
+
+# Automatically activate environment: specifico per container dockers
+#RUN echo "conda activate muraves" >> ~/.bashrc
+#SHELL ["bash", "--login", "-c"]
+#SHELL ["conda", "run", "-n", "muraves", "/bin/bash", "-c"]
+
 
 
 # Install git
