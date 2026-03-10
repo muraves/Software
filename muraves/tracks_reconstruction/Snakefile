@@ -1,8 +1,13 @@
 configfile: 'config.yaml'
 configfile: '../../tag/requirements.yaml'
+import os
+import multiprocessing
 
-data_path = config['data_path']
-
+PNFS = config['data_path']
+#SCRATCH = os.path.expandvars(config['scratch_path']) # expand environment variables in output path
+HOME = os.path.expandvars('/user/abiolchi/muraves_outputs')
+batch_size = config['batch_size'] 
+THREADS = config['threads']
 # IMPROVEMENTS:
 # The number of boards and channel should go in another configuration file
 
@@ -22,52 +27,100 @@ def parse_runs(run_str):
         runs.append(run_str)
     
     return [str(r) for r in runs] 
-runs = parse_runs(config['run']) # convert config file format into list of runs.
+
+def batch_runs(runs, n=5):
+    """Split list of runs into chunks of size n"""
+    for i in range(0, len(runs), n):
+        yield runs[i:i+n]
+
+def parse_batch_indices(batch_string):
+    batch_list = []
+    parts = batch_string.split(',')
+
+    for part in parts:
+        part = part.strip()
+        if '-' in part:
+            start, end = map(int, part.split('-'))
+            batch_list.extend(range(start, end + 1))
+        else:
+            batch_list.append(int(part))
+
+    return sorted(set(batch_list))  # Rimuove duplicati e ordina
+
+
+if config['run']:
+    runs = parse_runs(config['run'])  # convert config file format into list of runs.
+    batches = list(batch_runs(runs, batch_size))  # # create batches: [[2500,2501,2502], [2503,2504,2505], ...]
+    batch_idx = range(len(batches))
+else:
+    batch_idx = parse_batch_indices(config['batch_idx'])
+    
 
 localrules: all
 
-# Rule that tells the list of final outputs that must be produced by the flow
 rule all:
     input:
         expand(
-        '{path}/PEDESTAL/{color}/{version}/{run}/pedestal_{n}.cfg',
-            n = range(16),
-            path=config['output_path'],
+            "{output_path}/PARSED/{color}/{version}/{type}_batch{batch_idx}.stamp",
+            output_path=PNFS if config.get('copy_to_data') else HOME,
             color=config['hodoscope'],
-            version = config['version'],
+            version=config['version'],
             type=config['type'],
-            run=runs
-        )  
+            batch_idx=batch_idx,  # numeric batch IDs
+        )
 
-  
+
+rule parse_batch:
+    threads: THREADS
+    container: '/user/abiolchi/muraves-sing.sif'
+    input:
+        script="1_Parser/prep.py"
+    params:
+        log_on_console=config['logs_on_console'],
+        verbose=config['verbose'],
+        raw_data_path=f'{PNFS}/RAW_GZ/{{color}}',
+        batch_idx='{batch_idx}',  # Indice del batch (0, 1, ...)
+        runs=lambda wildcards:(
+            batches[int(wildcards.batch_idx)]
+            if config.get('run')
+            else list(range(int(wildcards.batch_idx) * batch_size, int(wildcards.batch_idx) * batch_size + batch_size))
+        ),  # Lista dei run nel batch
+    output:
+        # Questo output contiene la lista dei file prodotti dal batch, che saranno usati come input per le regole successive.
+        output_filename="{output_path}/PARSED/{color}/{version}/{type}_batch{batch_idx}.stamp"
+    shell:
+        "python {input.script} -i {params.raw_data_path} -th {threads} -t {wildcards.type} -r {params.runs} -o {output.output_filename} -l {params.log_on_console} -v {params.verbose} "
+
 rule parse:
+    # Input files aren't specified because they are 4 or 5 subruns depending on the type. 
+    # The folder where they are in can be seen in the optional_input_files parameter. 
+    container: '/user/abiolchi/muraves-sing.sif'
     input: 
         script='1_Parser/prep.py',
     params:
         #rawfile_path = '{path}/RAW_GZ/{color}',
-        optional_input_files = [f'{data_path}/RAW_GZ/{{color}}/SLOWCONTROL_run{{run}}.gz',
-                                f'{data_path}/RAW_GZ/{{color}}/LOG_run{{run}}.gz', 
-                                f'{data_path}/RAW_GZ/{{color}}/CONTEGGI_run{{run}}.gz'
-                                ]
+        optional_input_files = [f'{PNFS}/RAW_GZ/{{color}}/SLOWCONTROL_run{{run}}.gz',
+                                f'{PNFS}/RAW_GZ/{{color}}/LOG_run{{run}}.gz', 
+                                f'{PNFS}/RAW_GZ/{{color}}/CONTEGGI_run{{run}}.gz'
+                                ],
+        log_on_console = config['logs_on_console']
 
     output:
-        output_filename = '{path}/PARSED/{color}/{version}/{type}_run{run}.txt',
-        status_file = '{path}/PARSED/{color}/{version}/{type}_run{run}.json',
-        #log_file = '{path}/PARSED/{color}/{version}/{type}_run{run}.log'
-    shell: "python {input.script} -i {params.optional_input_files} -t {wildcards.type} -r {wildcards.run} -o {output.output_filename} -l {{config['log_on_console']}} -j {output.status_file}"
-
-
+        output_filename = '{output_path}/PARSED/{color}/{version}/{type}_run{run}.txt',
+        status_file = '{output_path}/PARSED/{color}/{version}/{type}_run{run}.json',
+        #log_file = '{output_path}/PARSED/{color}/{version}/{type}_run{run}.log'
+    shell: "python {input.script} -i {params.optional_input_files} -t {wildcards.type} -r {wildcards.run} -o {output.output_filename} -l {params.log_on_console} -j {output.status_file}"
 
 rule prereco:
     input:
         script = '2_PreRec/MakePedestalTree.py',
-        file = '{path}/PARSED/{color}/{version}/{type}_run{run}.txt'
+        file = '{output_path}/PARSED/{color}/{version}/{type}_run{run}.txt'
     params:
         nBoards = 16,
         nInfoBoard = 39,
         nChannels= 32
     output:
-        output_filename = '{path}/PRERECONSTRUCTED/{color}/{version}/{type}_run{run}.root'
+        output_filename = '{output_path}/PRERECONSTRUCTED/{color}/{version}/{type}_run{run}.root'
     shell: "python {input.script} -data {input.file} -r {wildcards.run} -type {wildcards.type} -info {params.nBoards} {params.nInfoBoard} {params.nChannels} -o {output.output_filename}"
 
 
@@ -75,13 +128,13 @@ rule prereco:
 rule pedestal_analysis:
     input:
         script = '3_PedAna/OnePhE_evaluator.py',
-        file = '{path}/PRERECONSTRUCTED/{color}/{version}/PIEDISTALLI_run{run}.root'
+        file = '{output_path}/PRERECONSTRUCTED/{color}/{version}/PIEDISTALLI_run{run}.root'
     #params: # to be removed at next version
     #    number_of_runs = 1
     #    delta_around_central_runID = 0
     output:
         expand(
-            "{{path}}/PEDESTAL/{{color}}/{{version}}/{{run}}/pedestal_{n}.cfg", n = range(16)
+            "{{output_path}}/PEDESTAL/{{color}}/{{version}}/{{run}}/pedestal_{n}.cfg", n = range(16)
         )
     shell: "python {input.script} -data {input.file} -r {wildcards.run} -o {output}"
 
@@ -94,14 +147,14 @@ rule analyse:
         script_2 =  "4_MainRecSof/EvaluateAngularCoordinates.cc",
         script_3 = "4_MainRecSof/ReadEvent.cc",
         script_4 = "4_MainRecSof/Tracking.cc",
-        data_file = '{path}/PRERECONSTRUCTED/{color}/{version}/ADC_run{run}.root',
+        data_file = '{output_path}/PRERECONSTRUCTED/{color}/{version}/ADC_run{run}.root',
         one_phe_files = lambda wildcards: [
-            f"{wildcards.path}/PEDESTAL/{wildcards.color}/{wildcards.version}/{wildcards.run}/pedestal_{n}.cfg"
+            f"{output_path}/PEDESTAL/{wildcards.color}/{wildcards.version}/{wildcards.run}/pedestal_{n}.cfg"
             for n in range(16)
         ]
 
     output:
-        output_filename = '{path}/RECONSTRUCTED/{color}/{version}/MURAVES_AnalyzedData_run{run}.root',
+        output_filename = '{output_path}/RECONSTRUCTED/{color}/{version}/MURAVES_AnalyzedData_run{run}.root',
     shell: "g++ -std=c++20 {input.script_4} {input.script_3} {input.script_2} {input.script_1} {input.main_script} "
            "-o 4_MainRecSof/MURAVES_reco_v2.exe "
            "$(root-config --cflags --libs) -lSpectrum "
@@ -109,3 +162,14 @@ rule analyse:
             "-L/opt/conda/envs/muraves/lib -lpython3.11 &&"
             "./4_MainRecSof/MURAVES_reco_v2.exe {wildcards.color} {wildcards.run} {wildcards.run}"
 
+# Not used anymore
+#rule stageout:
+#    input:
+#        lambda wildcards: os.path.join(SCRATCH, wildcards.subpath)
+#    output:
+#        os.path.join(PNFS, "{subpath}")
+#    shell:
+#        """
+#        rsync -av {input} {output} &&
+#        rm {input}
+#        """

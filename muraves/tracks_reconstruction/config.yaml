@@ -1,23 +1,48 @@
 # Path where RAW_GZ folder is located. Here all the outputs will be saved.
 # For production on T2B -> data_path: "/pnfs/iihe/muraves/muraves_DATA/"
-data_path: "/data" 
-output_path: "/outputs/tmp"
+
+#-----------processing parameters-----------------
+data_path: '/pnfs/iihe/muraves/muraves_DATA' # Path where data are stored ['/data',"/pnfs/iihe/muraves/muraves_DATA", ...]. 
+# This should be the path recongnised by the condor node or the container where the code is executed.
+
+#scratch_path: "$TMPDIR" 
+# temporary folder for intermediate files: it will be deleted at the end of the execution
+# it works on condor node, working node or on your local laptop.
+
+copy_to_data: True 
+# True:  temporary files will be copied to the data_path at the end of the execution, and deleted from the scratch_path
+# False: they will be copied into your home directory $HOME/muraves_outputs, and deleted from the scratch_path
+
+batch_size: 100 # number of runs to be executed in parallel.
+threads: 2 # number of cores requested per rule.
+
+
+#-----------selection parameters-----------------
 hodoscope:
-  #- BLU
+  #- BLU 
   - NERO
 
 type:
   - ADC
   #- PIEDISTALLI
+
+batch_idx: 
+  "80" # batch of runs to be executed. It can be specified as:
+
 run:
   # A-B: execute from A to B
-  #2500-2509
+  #2500-2599
+  # NERO highest run is 12104
+  # ROSSO highest run is 15012
+  # BLU highest run is 10011
 
   # A,B execute A and B
   #2500,2509
   
   # A: execute A
-  "2500"
+  #"2546"
 
-logs_on_console: False #(True/False)
+
+logs_on_console: True #(True/False)
+verbose: info # (debug/info/warning/error/critical)
 
