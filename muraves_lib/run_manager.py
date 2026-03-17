@@ -12,6 +12,7 @@ import json
 import os
 from typing import NamedTuple, List
 import signal
+from pathlib import Path
 def get_orientation(run_number: int, color: str) -> str:
     """
     Docstring for get_orientation
@@ -238,6 +239,7 @@ class RunValidation(NamedTuple):
     missing_run: bool
     mismatch_blockindex: List[int]
     unrecoverable_mismatches_details: dict
+    type: str
     
     
 
@@ -253,6 +255,7 @@ def read_summary_file(filename, timeout_seconds=5) -> RunValidation:
         print(f"File corrupted or unreadable: {filename} ({e})")
 
         return RunValidation(
+            type=None,
             is_run_ok=None,
             is_parsing_failed=None,
             has_less_events=None,
@@ -268,6 +271,9 @@ def read_summary_file(filename, timeout_seconds=5) -> RunValidation:
         )
 
     # ---- Se arrivi qui il file è valido ----
+    type = Path(filename).stem.split("_")[0] 
+    assert type in ["PIEDISTALLI", "ADC"], f"Unexpected file type: {type} in file {filename}"
+
     missing_run = len(data.get("subruns", [])) == 0
     is_run_ok = data.get("status") == "ok"
     qc = data.get("quality_checks", {})
@@ -295,6 +301,7 @@ def read_summary_file(filename, timeout_seconds=5) -> RunValidation:
     is_parsing_failed = True if has_less_events==False and missing_run==False and is_run_ok==False else False
 
     return RunValidation(
+        type=type,
         is_run_ok = is_run_ok,
         is_parsing_failed=is_parsing_failed,
         has_less_events=has_less_events,

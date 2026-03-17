@@ -328,7 +328,7 @@ def temp_to_output(output_path: Path):
     try:
         # create scratch temp file
         with tempfile.NamedTemporaryFile(
-            mode="w",
+            #mode="w", commented out because specific for txt file. 
             dir="/tmp",
             delete=False
         ) as tf:
@@ -336,12 +336,12 @@ def temp_to_output(output_path: Path):
 
         # give control back to user code
         yield scratch_tmp
-        logger.info(f"Successfully filling {scratch_tmp}, copying into {final_tmp}.")
+        logger.debug(f"Successfully filling {scratch_tmp}, copying into {final_tmp}.")
 
     except Exception as e:
         logging.error(f"Failed filling {scratch_tmp}: {e}. Creating empty output at {final_tmp}.")
         # Ensure Snakemake sees the file
-        open(scratch_tmp, "w").close()
+        scratch_tmp.touch(exist_ok=True)
         #raise  # propagate if you want job to fail
     finally:
         # Always create output
@@ -349,6 +349,7 @@ def temp_to_output(output_path: Path):
         _atomic_replace(final_tmp, output_path, retries=10)
         # Always cleanup
         scratch_tmp.unlink(missing_ok=True)
+        logger.info(f"Successfully renamed file into its final destination: {output_path} and temporary file deleted.")
         #final_tmp.unlink(missing_ok=True)
 
 
