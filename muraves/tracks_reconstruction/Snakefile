@@ -2,71 +2,37 @@ configfile: 'config.yaml'
 configfile: '../../tag/requirements.yaml'
 import os
 import multiprocessing
-
-PNFS = config['data_path']
-#SCRATCH = os.path.expandvars(config['scratch_path']) # expand environment variables in output path
-HOME = os.path.expandvars('/user/abiolchi/muraves_outputs')
-batch_size = config['batch_size'] 
-THREADS = config['threads']
+from muraves_lib import snakefile_helper
 # IMPROVEMENTS:
 # The number of boards and channel should go in another configuration file
 
-#Function to convert runs of config file to list of runs
-def parse_runs(run_str):
-    runs = []
-    try:
-        for part in run_str.split(','):
-            part = part.strip()
-            if '-' in part:
-                start, end = map(int, part.split('-'))
-                runs.extend(range(start, end + 1))
-            else:
-                runs.append(int(part))
-        
-    except:
-        runs.append(run_str)
-    
-    return [str(r) for r in runs] 
-
-def batch_runs(runs, n=5):
-    """Split list of runs into chunks of size n"""
-    for i in range(0, len(runs), n):
-        yield runs[i:i+n]
-
-def parse_batch_indices(batch_string):
-    batch_list = []
-    parts = batch_string.split(',')
-
-    for part in parts:
-        part = part.strip()
-        if '-' in part:
-            start, end = map(int, part.split('-'))
-            batch_list.extend(range(start, end + 1))
-        else:
-            batch_list.append(int(part))
-
-    return sorted(set(batch_list))  # Rimuove duplicati e ordina
-
-
+#>>>>>~~~~~~~~~~~~~~~~~~ GLOBAL PARAMETERS  ~~~~~~~~~~~~~~~~~~~
+PNFS = config['data_path']
+HOME = os.path.expandvars('/user/abiolchi/muraves_outputs')
+BATCH_SIZE = config['batch_size'] 
+THREADS = config['threads']
 if config['run']:
-    runs = parse_runs(config['run'])  # convert config file format into list of runs.
-    batches = list(batch_runs(runs, batch_size))  # # create batches: [[2500,2501,2502], [2503,2504,2505], ...]
-    batch_idx = range(len(batches))
+    runs = snakefile_helper.parse_runs(config['run'])  # convert config file format into list of runs.
+    BATCHES = list(snakefile_helper.batch_runs(runs, BATCH_SIZE))  # # create batches: [[2500,2501,2502], [2503,2504,2505], ...]
+    BATCH_IDX = range(len(BATCHES))
 else:
-    batch_idx = parse_batch_indices(config['batch_idx'])
-    
+    BATCH_IDX = snakefile_helper.parse_batch_indices(config['batch_idx'])
+overwrite_outputs=config['overwrite_outputs'],
+log_on_console=config['logs_on_console'],
+verbose=config['verbose'],
+#<<<<<~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 localrules: all
 
 rule all:
     input:
         expand(
-            "{output_path}/PARSED/{color}/{version}/{type}_batch{batch_idx}.stamp",
+            "{output_path}/PRERECONSTRUCTED/{color}/{version}/{type}_batch{batch_idx}.stamp",
             output_path=PNFS if config.get('copy_to_data') else HOME,
             color=config['hodoscope'],
             version=config['version'],
             type=config['type'],
-            batch_idx=batch_idx,  # numeric batch IDs
+            batch_idx=BATCH_IDX
         )
 
 
@@ -76,52 +42,29 @@ rule parse_batch:
     input:
         script="1_Parser/prep.py"
     params:
-        log_on_console=config['logs_on_console'],
-        verbose=config['verbose'],
         raw_data_path=f'{PNFS}/RAW_GZ/{{color}}',
-        batch_idx='{batch_idx}',  # Indice del batch (0, 1, ...)
-        runs=lambda wildcards:(
-            batches[int(wildcards.batch_idx)]
-            if config.get('run')
-            else list(range(int(wildcards.batch_idx) * batch_size, int(wildcards.batch_idx) * batch_size + batch_size))
-        ),  # Lista dei run nel batch
+        runs=lambda wildcards:
+            ( BATCHES[int(wildcards.batch_idx)] if config.get('run')
+                else list(range(int(batch_idx) * BATCH_SIZE, int(wildcards.batch_idx) * BATCH_SIZE + BATCH_SIZE))
+            ),  
     output:
-        # Questo output contiene la lista dei file prodotti dal batch, che saranno usati come input per le regole successive.
-        output_filename="{output_path}/PARSED/{color}/{version}/{type}_batch{batch_idx}.stamp"
+        output_filename="{output_path}/PARSED/{color}/{version}/{type}_batch{batch_idx}.stamp" #Questo output contiene la lista dei file prodotti dal batch, che saranno usati come input per le regole successive.
     shell:
-        "python {input.script} -i {params.raw_data_path} -th {threads} -t {wildcards.type} -r {params.runs} -o {output.output_filename} -l {params.log_on_console} -v {params.verbose} "
-
-rule parse:
-    # Input files aren't specified because they are 4 or 5 subruns depending on the type. 
-    # The folder where they are in can be seen in the optional_input_files parameter. 
-    container: '/user/abiolchi/muraves-sing.sif'
-    input: 
-        script='1_Parser/prep.py',
-    params:
-        #rawfile_path = '{path}/RAW_GZ/{color}',
-        optional_input_files = [f'{PNFS}/RAW_GZ/{{color}}/SLOWCONTROL_run{{run}}.gz',
-                                f'{PNFS}/RAW_GZ/{{color}}/LOG_run{{run}}.gz', 
-                                f'{PNFS}/RAW_GZ/{{color}}/CONTEGGI_run{{run}}.gz'
-                                ],
-        log_on_console = config['logs_on_console']
-
-    output:
-        output_filename = '{output_path}/PARSED/{color}/{version}/{type}_run{run}.txt',
-        status_file = '{output_path}/PARSED/{color}/{version}/{type}_run{run}.json',
-        #log_file = '{output_path}/PARSED/{color}/{version}/{type}_run{run}.log'
-    shell: "python {input.script} -i {params.optional_input_files} -t {wildcards.type} -r {wildcards.run} -o {output.output_filename} -l {params.log_on_console} -j {output.status_file}"
+        "python {input.script} -i {params.raw_data_path} -th {threads} -t {wildcards.type} -r {params.runs} -o {output.output_filename} -l {log_on_console} -v {verbose} -ow {overwrite_outputs}"
 
 rule prereco:
+    threads: THREADS
+    container: '/user/abiolchi/muraves-sing.sif'
     input:
         script = '2_PreRec/MakePedestalTree.py',
-        file = '{output_path}/PARSED/{color}/{version}/{type}_run{run}.txt'
+        input_filename = "{output_path}/PARSED/{color}/{version}/{type}_batch{BATCH_IDX}.stamp"
     params:
         nBoards = 16,
         nInfoBoard = 39,
         nChannels= 32
     output:
-        output_filename = '{output_path}/PRERECONSTRUCTED/{color}/{version}/{type}_run{run}.root'
-    shell: "python {input.script} -data {input.file} -r {wildcards.run} -type {wildcards.type} -info {params.nBoards} {params.nInfoBoard} {params.nChannels} -o {output.output_filename}"
+        output_filename = "{output_path}/PRERECONSTRUCTED/{color}/{version}/{type}_batch{BATCH_IDX}.stamp"
+    shell: "python {input.script} -i {input.input_filename} -info {params.nBoards} {params.nInfoBoard} {params.nChannels} -o {output.output_filename} -th {threads} -l {log_on_console} -v {verbose} -ow {overwrite_outputs}"
 
 
 
@@ -162,6 +105,10 @@ rule analyse:
             "-L/opt/conda/envs/muraves/lib -lpython3.11 &&"
             "./4_MainRecSof/MURAVES_reco_v2.exe {wildcards.color} {wildcards.run} {wildcards.run}"
 
+
+
+
+
 # Not used anymore
 #rule stageout:
 #    input:
@@ -173,3 +120,7 @@ rule analyse:
 #        rsync -av {input} {output} &&
 #        rm {input}
 #        """
+
+
+
+

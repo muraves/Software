@@ -2,18 +2,18 @@
 # For production on T2B -> data_path: "/pnfs/iihe/muraves/muraves_DATA/"
 
 #-----------processing parameters-----------------
-data_path: '/pnfs/iihe/muraves/muraves_DATA' # Path where data are stored ['/data',"/pnfs/iihe/muraves/muraves_DATA", ...]. 
+data_path: '/data' # Path where data are stored ['/data',"/pnfs/iihe/muraves/muraves_DATA", ...]. 
 # This should be the path recongnised by the condor node or the container where the code is executed.
 
 #scratch_path: "$TMPDIR" 
 # temporary folder for intermediate files: it will be deleted at the end of the execution
 # it works on condor node, working node or on your local laptop.
 
-copy_to_data: True 
+copy_to_data: False 
 # True:  temporary files will be copied to the data_path at the end of the execution, and deleted from the scratch_path
 # False: they will be copied into your home directory $HOME/muraves_outputs, and deleted from the scratch_path
 
-batch_size: 100 # number of runs to be executed in parallel.
+batch_size: 2 # number of runs to be executed in parallel.
 threads: 2 # number of cores requested per rule.
 
 
@@ -23,15 +23,15 @@ hodoscope:
   - NERO
 
 type:
+  #- ADC or PIEDISTALLI
   - ADC
-  #- PIEDISTALLI
 
 batch_idx: 
-  "80" # batch of runs to be executed. It can be specified as:
+  #"0-100" # batch of runs to be executed. It can be specified as:
 
 run:
   # A-B: execute from A to B
-  #2500-2599
+  #2402-2412
   # NERO highest run is 12104
   # ROSSO highest run is 15012
   # BLU highest run is 10011
@@ -40,9 +40,10 @@ run:
   #2500,2509
   
   # A: execute A
-  #"2546"
+  "2546,2547"
 
 
-logs_on_console: True #(True/False)
+logs_on_console: False #(True/False)
 verbose: info # (debug/info/warning/error/critical)
+overwrite_outputs: True # (True/False) if True, existing output files will be overwritten. If False, existing output files will be kept and the corresponding runs will be skipped.
 
