@@ -309,7 +309,7 @@ def temp_file_manager(delete_on_failure=True):
         
 
 @contextmanager
-def temp_to_output(output_path: Path):
+def temp_to_output(output_path: Path, success_message= ""):
     """
     Context manager that:
     - creates a temp file in scratch_dir
@@ -336,7 +336,7 @@ def temp_to_output(output_path: Path):
 
         # give control back to user code
         yield scratch_tmp
-        logger.debug(f"Successfully filling {scratch_tmp}, copying into {final_tmp}.")
+        logger.debug(f"Successfully filled {scratch_tmp}, copying into {final_tmp}.")
 
     except Exception as e:
         logging.error(f"Failed filling {scratch_tmp}: {e}. Creating empty output at {final_tmp}.")
@@ -344,12 +344,16 @@ def temp_to_output(output_path: Path):
         scratch_tmp.touch(exist_ok=True)
         #raise  # propagate if you want job to fail
     finally:
+        #import pdb; pdb.set_trace()
         # Always create output
         shutil.copy2(scratch_tmp, final_tmp)
         _atomic_replace(final_tmp, output_path, retries=10)
         # Always cleanup
         scratch_tmp.unlink(missing_ok=True)
-        logger.info(f"Successfully renamed file into its final destination: {output_path} and temporary file deleted.")
+        if success_message=="":
+            logger.info(f"Successfully renamed temporary file into its final destination: {output_path} and temporary file deleted.")
+        else:
+            logger.info(success_message + f"\nSuccessfully renamed file into its final destination: {output_path} and temporary file deleted.")
         #final_tmp.unlink(missing_ok=True)
 
 
