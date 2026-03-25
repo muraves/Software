@@ -96,28 +96,47 @@ rule pedestal_analysis:
 
 
 
-#rule analyse:
+rule analyse:
+    threads: THREADS
+    container: '/user/abiolchi/muraves-sing.sif'
+    input:
+        script = "4_MainRecSof/MURAVES_reco_v2.py",
+        data_file = '{output_path}/PARSED/{color}/{version}/ADC_batch{batch_idx}.stamp',
+        one_phe_files = "{output_path}/PEDESTAL/{color}/{version}/PIEDISTALLI_batch{batch_idx}.stamp"
+    params:
+        runs = lambda wildcards: (
+            BATCHES[int(wildcards.batch_idx)] if config.get('run')
+            else list(range(int(wildcards.batch_idx) * BATCH_SIZE,
+                            int(wildcards.batch_idx) * BATCH_SIZE + BATCH_SIZE))
+        )
+    output:
+        output_filename = '{output_path}/RECONSTRUCTED/{color}/{version}/MURAVES_AnalyzedData_batch{batch_idx}.stamp'
+    shell:
+        """
+        for run in {params.runs}; do
+            python {input.script} {wildcards.color} $run
+        done
+        touch {output.output_filename}
+        """
+
+# (kept for reference — original C++ compilation rule)
+#rule analyse_cpp:
 #    input:
 #        main_script = "4_MainRecSof/MURAVES_reco_v2.cpp",
 #        script_1 = "4_MainRecSof/ClusterLists.cc",
 #        script_2 =  "4_MainRecSof/EvaluateAngularCoordinates.cc",
 #        script_3 = "4_MainRecSof/ReadEvent.cc",
 #        script_4 = "4_MainRecSof/Tracking.cc",
-#        data_file = '{output_path}/PRERECONSTRUCTED/{color}/{version}/ADC_batch{batch_idx}.stamp',
+#        data_file = '{output_path}/PARSED/{color}/{version}/ADC_batch{batch_idx}.stamp',
 #        one_phe_files = "{output_path}/PEDESTAL/{color}/{version}/PIEDISTALLI_batch{batch_idx}.stamp"
-#        #lambda wildcards: [
-#        #    f"{output_path}/PEDESTAL/{wildcards.color}/{wildcards.version}/{wildcards.run}/pedestal_{n}.cfg"
-#        #    for n in range(16)
-#        #]
-#
 #    output:
 #        output_filename = '{output_path}/RECONSTRUCTED/{color}/{version}/MURAVES_AnalyzedData_batch{batch_idx}.stamp',
 #    shell: "g++ -std=c++20 {input.script_4} {input.script_3} {input.script_2} {input.script_1} {input.main_script} "
 #           "-o 4_MainRecSof/MURAVES_reco_v2.exe "
 #           "$(root-config --cflags --libs) -lSpectrum "
 #           "-I/opt/conda/envs/muraves/include/python3.11 "
-#            "-L/opt/conda/envs/muraves/lib -lpython3.11 &&"
-#            "./4_MainRecSof/MURAVES_reco_v2.exe {wildcards.color} {wildcards.run} {wildcards.run}" ##NB: wildcard run has to deshappear
+#           "-L/opt/conda/envs/muraves/lib -lpython3.11 &&"
+#           "./4_MainRecSof/MURAVES_reco_v2.exe {wildcards.color} {wildcards.run} {wildcards.run}"
 
 
 
