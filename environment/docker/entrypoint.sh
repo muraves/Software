@@ -34,7 +34,7 @@ if [ -d "/workspace/Software" ]; then
     cd /workspace/Software
     python -m pip install -e . --quiet
 fi
-
+pip install -U scikit-learn --quiet
 #------------------------------------------------
 # Check if /workspace is empty or not a git repo
 #------------------------------------------------
