@@ -19,7 +19,7 @@ import time
 from array import array
 from pathlib import Path
 from muraves_lib import file_handler
-from multiprocessing.dummy import Pool
+from multiprocessing import Pool
 logger = logging.getLogger(__name__)
 
 def FillVector(input_file, nBoards):
