@@ -32,7 +32,7 @@ rule all:
             color=config['hodoscope'],
             version=config['version'],
             #type=config['type'], 
-            ## NB: this isn't needed anymore if rule all want's to produce output of pedestal rule or analysis rule, as in this case the dependance is explicit.
+            ## NB: this isn't needed anymore if 'rule all' want's to produce output of pedestal rule or analysis rule, as in this case the dependance is explicit.
             batch_idx=BATCH_IDX
         )
 
@@ -46,7 +46,7 @@ rule parse_batch:
         raw_data_path=f'{PNFS}/RAW_GZ/{{color}}',
         runs=lambda wildcards:
             ( BATCHES[int(wildcards.batch_idx)] if config.get('run')
-                else list(range(int(batch_idx) * BATCH_SIZE, int(wildcards.batch_idx) * BATCH_SIZE + BATCH_SIZE))
+                else list(range(int(wildcards.batch_idx) * BATCH_SIZE, int(wildcards.batch_idx) * BATCH_SIZE + BATCH_SIZE))
             ),  
     output:
         output_filename="{output_path}/PARSED/{color}/{version}/{type}_batch{batch_idx}.stamp" #Questo output contiene la lista dei file prodotti dal batch, che saranno usati come input per le regole successive.
