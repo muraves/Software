@@ -380,6 +380,8 @@ def run_reconstruction(
 ) -> tuple[Path, Path]:
     """Run full event reconstruction for one run and emit JSON (and optional ROOT)."""
     print(" ~~~~~~~  Welcome to the MURAVES reconstruction (Python) ~~~~~~~~")
+    total_start_wall_time = time.time()
+    json_event_output_elapsed = 0.0
 
     # Geometry
     if color == "ROSSO":
@@ -1173,7 +1175,9 @@ def run_reconstruction(
 
             }
 
+            json_output_start = time.time()
             out_events.write(json.dumps(event_record) + "\n")
+            json_event_output_elapsed += time.time() - json_output_start
 
             if progress_every > 0 and ev % progress_every == 0:
                 elapsed = max(1e-9, time.time() - start_wall_time)
@@ -1279,20 +1283,52 @@ def run_reconstruction(
         "analysis_file": str(analysis_jsonl),
     }
 
+    event_loop_elapsed = max(1e-9, time.time() - start_wall_time)
+
+    summary_output_start = time.time()
     with mini_summary_json.open("w", encoding="utf-8") as handle:
         json.dump(summary, handle, indent=2)
+    summary_output_elapsed = time.time() - summary_output_start
 
     analyzed_root = None
     run_info_root = None
+    root_fill_elapsed = 0.0
     if write_root:
+        root_start_wall_time = time.time()
         analyzed_root, run_info_root = write_root_outputs(
             analysis_jsonl=analysis_jsonl,
             mini_summary_json=mini_summary_json,
         )
+        root_fill_elapsed = max(0.0, time.time() - root_start_wall_time)
+
+    elapsed_total = max(1e-9, time.time() - total_start_wall_time)
+    json_output_elapsed = json_event_output_elapsed + summary_output_elapsed
+    output_production_elapsed = json_output_elapsed + root_fill_elapsed
+    reconstruction_core_elapsed = max(0.0, elapsed_total - output_production_elapsed)
+
+    summary["EventLoopWallTimeSeconds"] = event_loop_elapsed
+    summary["JsonOutputWallTimeSeconds"] = json_output_elapsed
+    summary["RootFillWallTimeSeconds"] = root_fill_elapsed
+    summary["OutputProductionWallTimeSeconds"] = output_production_elapsed
+    summary["ReconstructionCoreWallTimeSeconds"] = reconstruction_core_elapsed
+    summary["ProcessingWallTimeSeconds"] = elapsed_total
+    summary["ReconstructionRateEventsPerSecond"] = (
+        ev / reconstruction_core_elapsed if ev > 0 and reconstruction_core_elapsed > 0 else 0.0
+    )
+    summary["ProcessingRateEventsPerSecond"] = ev / elapsed_total if ev > 0 else 0.0
+
+    with mini_summary_json.open("w", encoding="utf-8") as handle:
+        json.dump(summary, handle, indent=2)
 
     print(f"Number of events: {ev}")
+    print(f"[progress] Reconstruction core wall time: {reconstruction_core_elapsed:.2f} s", flush=True)
+    print(f"[progress] JSON output wall time: {json_output_elapsed:.2f} s", flush=True)
+    if write_root:
+        print(f"[progress] ROOT fill wall time: {root_fill_elapsed:.2f} s", flush=True)
+    print(f"[progress] Output production wall time: {output_production_elapsed:.2f} s", flush=True)
+    print(f"[progress] Total wall time: {elapsed_total:.2f} s", flush=True)
     if ev > 0:
-        elapsed_total = max(1e-9, time.time() - start_wall_time)
+        print(f"[progress] Reconstruction core rate: {summary['ReconstructionRateEventsPerSecond']:.1f} ev/s", flush=True)
         print(f"[progress] Average processing rate: {ev / elapsed_total:.1f} ev/s", flush=True)
     print(f"RUN {run} COMPLETED. Find your data in ---> {analysis_jsonl}")
     print(f"Find your minitree in ---> {mini_summary_json}")
