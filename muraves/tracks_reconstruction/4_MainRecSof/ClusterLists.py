@@ -16,6 +16,27 @@ class ClusterCollection:
     ClustersSize: list[int] = field(default_factory=list)
 
 
+class DeterministicSmearingRNG:
+    """Cross-language RNG for reproducible single-strip smearing."""
+
+    def __init__(self, seed: int):
+        state = int(seed) & 0xFFFFFFFF
+        self._state = state if state != 0 else 0x6D2B79F5
+
+    def _next_u32(self) -> int:
+        state = self._state
+        state ^= (state << 13) & 0xFFFFFFFF
+        state ^= (state >> 17) & 0xFFFFFFFF
+        state ^= (state << 5) & 0xFFFFFFFF
+        self._state = state & 0xFFFFFFFF
+        return self._state
+
+    def randint(self, low: int, high: int) -> int:
+        if high < low:
+            raise ValueError("high must be >= low")
+        return low + (self._next_u32() % (high - low + 1))
+
+
 def ClusterPosition(stripDeposits: Sequence[float], stripPos: Sequence[float]) -> float:
     """Return weighted cluster position from strip deposits and positions."""
     numerator = 0.0
@@ -45,6 +66,7 @@ def CreateClusterList(
     Texp2: float,
     TriggerMask1: Sequence[float],
     TriggerMask2: Sequence[float],
+    smearing_rng: DeterministicSmearingRNG | None = None,
 ) -> ClusterCollection:
     """
     Python port of CreateClusterList from ClusterLists.cc.
@@ -75,8 +97,8 @@ def CreateClusterList(
     clu_pos = 0.0
     clu_size = 0
 
-    # C++ uses random_device for each 1-strip cluster. SystemRandom is the closest behavior.
-    smearing_rng = random.SystemRandom()
+    # Preserve the old behavior unless a deterministic cross-language RNG is provided.
+    nondeterministic_rng = random.SystemRandom() if smearing_rng is None else None
 
     for st in range(n_strips):
         deposit = float(Deposits[st])
@@ -160,7 +182,8 @@ def CreateClusterList(
                     # Keep C++ granularity: integer millimeter steps after 1/1000 scaling.
                     range_from = int(-1000 * adjacent_strips_distance / 2)
                     range_to = int(1000 * adjacent_strips_distance / 2)
-                    cluster_position += smearing_rng.randint(range_from, range_to) / 1000.0
+                    rng = smearing_rng if smearing_rng is not None else nondeterministic_rng
+                    cluster_position += rng.randint(range_from, range_to) / 1000.0
 
                 cluster_positions.append(cluster_position)
                 cluster_energies.append(clu_en)

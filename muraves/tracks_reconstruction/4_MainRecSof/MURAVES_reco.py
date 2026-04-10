@@ -8,10 +8,17 @@ from pathlib import Path
 from typing import Sequence
 
 from SearchFileName import Search_File
-from ClusterLists import CreateClusterList
+from ClusterLists import CreateClusterList, DeterministicSmearingRNG
 from evaluate_angular_coordinates import TrackAngularCoordinates
 from ReadEvent import ReadEvent
 from Tracking import MakeTracks
+
+from muraves_lib import file_handler
+from multiprocessing import Pool
+from functools import partial
+import argparse as argp
+import logging
+logger = logging.getLogger(__name__)
 
 
 def _mean_rms(values: Sequence[float]) -> tuple[float, float]:
@@ -372,11 +379,14 @@ def write_root_outputs(
 def run_reconstruction(
     color: str,
     run: int,
-    output_base: Path,
-    raw_base: Path,
+    adc_file: Path,
+    pedestal_folder: Path,
+    reconstructed_path: Path,
+    slow_control_file: Path,
     tracks_base: Path,
     write_root: bool = False,
     progress_every: int = 1000,
+    cluster_smearing_seed: int | None = None,
 ) -> tuple[Path, Path]:
     """Run full event reconstruction for one run and emit JSON (and optional ROOT)."""
     print(" ~~~~~~~  Welcome to the MURAVES reconstruction (Python) ~~~~~~~~")
@@ -422,27 +432,27 @@ def run_reconstruction(
     #const double AdiacentStripsDistance = 0.0165;
 
     # PATHS
-    reconstructed_path = output_base / "RECONSTRUCTED" / color
     reconstructed_path.mkdir(parents=True, exist_ok=True)
 
     analysis_jsonl = reconstructed_path / f"MURAVES_AnalyzedData_run{run}.jsonl"
     mini_summary_json = reconstructed_path / f"MURAVES_miniRunTree_run{run}.json"
+    smearing_rng = DeterministicSmearingRNG(cluster_smearing_seed) if cluster_smearing_seed is not None else None
 
-    adc_prefix = output_base / "PARSED" / color / "v0" / f"ADC_run{run}.txt"
-    complete_adc_file = Search_File(str(adc_prefix))
-    if complete_adc_file == "NOTaFIle":
-        raise FileNotFoundError(f"ADC input file not found for pattern: {adc_prefix}*")
+    if cluster_smearing_seed is not None:
+        print(f"Using deterministic single-strip smearing seed: {cluster_smearing_seed}")
 
-    print(f"[progress] Input ADC file: {complete_adc_file}", flush=True)
+    adc_file = Path(adc_file)
+    if not adc_file.exists():
+        raise FileNotFoundError(f"ADC input file not found: {adc_file}")
 
-    slow_control_file = raw_base / color / f"SLOWCONTROL_run{run}"
+    print(f"[progress] Input ADC file: {adc_file}", flush=True)
+
     trigger_rate, temperature, working_point = _read_slow_control(slow_control_file, run)
 
     spiroc_cfg = tracks_base / "AncillaryFiles" / "spiroc-hybrid-map.cfg"
     # The SPiROC mapping file defines the strip-to-channel mapping for each board, which is crucial for correctly interpreting the ADC data and applying pedestals. The C++ code relies on this mapping to reorder channels and access pedestals in the correct order, so we must load it before processing events.
     sorted_channels = _load_spiroc_mapping(spiroc_cfg)
 
-    pedestal_folder = output_base / "PEDESTAL" / color / "v0" / str(run)
     # Pedestal files contain the baseline ADC values (pedestals) and the conversion factors to photoelectrons (onephes) for each channel. These are essential for calibrating the raw ADC counts into physical energy deposits. The C++ code loads these pedestals before event reconstruction, so we do the same here to ensure that we can apply the correct calibration to each channel's ADC counts during event processing.
     boards_peds, boards_onephes, boards_is1phe_copy = _load_pedestals(
         pedestal_folder, n_boards, sorted_channels
@@ -510,7 +520,7 @@ def run_reconstruction(
 
 
     # READ ADC FILE AND RECONSTRUCT EVENTS
-    with Path(complete_adc_file).open("r", encoding="utf-8", errors="ignore") as adc_handle, analysis_jsonl.open(
+    with adc_file.open("r", encoding="utf-8", errors="ignore") as adc_handle, analysis_jsonl.open(
         "w", encoding="utf-8"
     ) as out_events:
         start_wall_time = time.time()
@@ -679,6 +689,7 @@ def run_reconstruction(
                 # board 0 and 1 are x1 sub-planes
                 _safe_get(trigger_mask_strips, 0),
                 _safe_get(trigger_mask_strips, 1),
+                smearing_rng=smearing_rng,
             )
             results_p2x = CreateClusterList(
                 deposits_p2x,
@@ -690,6 +701,7 @@ def run_reconstruction(
                 # board 4 and 5 are x2 sub-planes
                 _safe_get(trigger_mask_strips, 4),
                 _safe_get(trigger_mask_strips, 5),
+                smearing_rng=smearing_rng,
             )
             results_p3x = CreateClusterList(
                 deposits_p3x,
@@ -701,6 +713,7 @@ def run_reconstruction(
                 # board 8 and 9 are x3 sub-planes
                 _safe_get(trigger_mask_strips, 8),
                 _safe_get(trigger_mask_strips, 9),
+                smearing_rng=smearing_rng,
             )
             results_p4x = CreateClusterList(
                 deposits_p4x,
@@ -712,6 +725,7 @@ def run_reconstruction(
                 # board 12 and 13 are x4 sub-planes
                 _safe_get(trigger_mask_strips, 12),
                 _safe_get(trigger_mask_strips, 13),
+                smearing_rng=smearing_rng,
             )
 
             results_p1y = CreateClusterList(
@@ -724,6 +738,7 @@ def run_reconstruction(
                 # board 2 and 3 are y1 sub-planes, note the reversed order for y views
                 _safe_get(trigger_mask_strips, 3),
                 _safe_get(trigger_mask_strips, 2),
+                smearing_rng=smearing_rng,
             )
             results_p2y = CreateClusterList(
                 deposits_p2y,
@@ -735,6 +750,7 @@ def run_reconstruction(
                 # board 6 and 7 are y2 sub-planes, note the reversed order for y views
                 _safe_get(trigger_mask_strips, 7),
                 _safe_get(trigger_mask_strips, 6),
+                smearing_rng=smearing_rng,
             )
             results_p3y = CreateClusterList(
                 deposits_p3y,
@@ -746,6 +762,7 @@ def run_reconstruction(
                 # board 10 and 11 are y3 sub-planes, note the reversed order for y views
                 _safe_get(trigger_mask_strips, 11),
                 _safe_get(trigger_mask_strips, 10),
+                smearing_rng=smearing_rng,
             )
             results_p4y = CreateClusterList(
                 deposits_p4y,
@@ -757,6 +774,7 @@ def run_reconstruction(
                 # board 14 and 15 are y4 sub-planes, note the reversed order for y views
                 _safe_get(trigger_mask_strips, 15),
                 _safe_get(trigger_mask_strips, 14),
+                smearing_rng=smearing_rng,
             )
 
             nclusters_z1 = len(results_p1x.ClustersEnergy)
@@ -1339,21 +1357,122 @@ def run_reconstruction(
     return analysis_jsonl, mini_summary_json
 
 
+def _parse_bool_flag(value: str) -> bool:
+    return str(value).strip().lower() == "true"
+
+
+def _extract_run_number(path: Path) -> int:
+    stem = path.stem
+    if "run" not in stem:
+        raise ValueError(f"Unable to extract run number from path: {path}")
+    return int(stem.split("run")[-1])
+
+
+def _configure_batch_logging(log_on_console: str, verbose: str, output_filename: Path) -> None:
+    if log_on_console == "True":
+        logging.basicConfig(
+            level=getattr(logging, verbose.upper()),
+            format="%(asctime)s [%(levelname)s] %(message)s",
+        )
+        return
+
+    log_file = Path("logs/RECONSTRUCTED") / output_filename.with_suffix(".log").name
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    log_file.write_text("", encoding="utf-8")
+    logging.basicConfig(
+        filename=log_file,
+        level=getattr(logging, verbose.upper()),
+        format="%(asctime)s [%(levelname)s] %(message)s",
+    )
+
+
+def _build_pedestal_folder_map(pedestal_batch_file: Path) -> dict[int, Path]:
+    with pedestal_batch_file.open("r", encoding="utf-8") as handle:
+        pedestal_outputs = [Path(line.strip()) for line in handle if line.strip()]
+
+    return {
+        int(Path(pedestal_output).parent.stem): pedestal_output.parent
+        for pedestal_output in pedestal_outputs
+    }
+
+
+def _process_batch_run(
+    adc_file_str: str,
+    color: str,
+    pedestal_folders_by_run: dict[int, Path],
+    raw_base: Path,
+    tracks_base: Path,
+    overwrite_outputs: bool,
+    write_root: bool,
+    progress_every: int,
+    cluster_smearing_seed: int | None,
+) -> tuple[Path, int]:
+    adc_file = Path(adc_file_str)
+    run = _extract_run_number(adc_file)
+
+    pedestal_folder = pedestal_folders_by_run.get(run)
+    if pedestal_folder is None:
+        raise FileNotFoundError(
+            f"No pedestal outputs found for run {run} in the provided pedestal batch file"
+        )
+
+    reconstructed_path = adc_file.parents[3] / "RECONSTRUCTED" / adc_file.parents[1].name / adc_file.parent.name
+    analysis_jsonl = reconstructed_path / f"MURAVES_AnalyzedData_run{run}.jsonl"
+    analyzed_root = reconstructed_path / f"MURAVES_AnalyzedData_run{run}.root"
+    primary_output = analyzed_root if write_root else analysis_jsonl
+
+    should_process = overwrite_outputs or not primary_output.exists()
+    if not should_process:
+        logger.info("Output file %s already exists. Skipping run %s.", primary_output, run)
+        return primary_output, run
+
+    logger.info("Processing run %s from %s", run, adc_file)
+    run_reconstruction(
+        color=color,
+        run=run,
+        adc_file=adc_file,
+        pedestal_folder=pedestal_folder,
+        reconstructed_path=reconstructed_path,
+        slow_control_file=raw_base / color / f"SLOWCONTROL_run{run}",
+        tracks_base=tracks_base,
+        write_root=write_root,
+        progress_every=progress_every,
+        cluster_smearing_seed=cluster_smearing_seed,
+    )
+    return primary_output, run
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Pythonized MURAVES reconstruction entrypoint for 4_MainRecSof. "
-            "Outputs event-level JSONL and run-level summary JSON, with optional ROOT export."
+            "Batch MURAVES reconstruction entrypoint for Snakemake. "
+            "Consumes batch stamp files and reconstructs all runs listed in the batch."
         )
     )
     parser.add_argument("color", type=str, help="Detector color: ROSSO, NERO, or BLU")
-    parser.add_argument("run", type=int, help="Run number")
-    parser.add_argument("end_run", nargs="?", default=None, help="Kept for CLI compatibility; ignored")
     parser.add_argument(
-        "--output-base",
+        "-i",
+        "--input-filename",
+        dest="input_filename",
         type=Path,
-        default=_resolve_default_output_base(),
-        help="Base folder that contains PARSED/ PEDESTAL/ and RECONSTRUCTED/",
+        required=True,
+        help="Batch stamp file listing parsed ADC input files.",
+    )
+    parser.add_argument(
+        "-p",
+        "--pedestal-input-filename",
+        dest="pedestal_input_filename",
+        type=Path,
+        required=True,
+        help="Batch stamp file listing pedestal outputs for the same runs.",
+    )
+    parser.add_argument(
+        "-o",
+        "--output-filename",
+        dest="output_filename",
+        type=Path,
+        required=True,
+        help="Batch stamp file to write with reconstructed outputs.",
     )
     parser.add_argument(
         "--raw-base",
@@ -1376,7 +1495,46 @@ def parse_args() -> argparse.Namespace:
         "--progress-every",
         type=int,
         default=1000,
-        help="Print progress every N events (set 0 to disable periodic progress logs).",
+        help="Print progress every N events within each run (set 0 to disable).",
+    )
+    parser.add_argument(
+        "--cluster-smearing-seed",
+        type=int,
+        default=None,
+        help=(
+            "Optional deterministic seed for single-strip cluster smearing. "
+            "Use the same value in C++ and Python to align the smearing sequence."
+        ),
+    )
+    parser.add_argument(
+        "-l",
+        "--log_on_console",
+        dest="log_on_console",
+        required=True,
+        help="If true logs are printed on terminal, if False they are printed on a file.",
+    )
+    parser.add_argument(
+        "-ow",
+        "--overwrite_outputs",
+        dest="overwrite_outputs",
+        required=True,
+        help="If true, existing output files will be overwritten. If False, existing output files will be kept and the corresponding runs will be skipped.",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        dest="verbose",
+        required=False,
+        default="info",
+        help="Logging level: debug/info/warning/error/critical (default = info)",
+    )
+    parser.add_argument(
+        "-th",
+        "--num_threads",
+        dest="num_threads",
+        type=int,
+        default=1,
+        help="Number of threads/cores to use for processing (default = 1)",
     )
     return parser.parse_args()
 
@@ -1384,14 +1542,45 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     color = args.color.upper()
-    run_reconstruction(
+    overwrite_outputs = _parse_bool_flag(args.overwrite_outputs)
+
+    _configure_batch_logging(args.log_on_console, args.verbose, args.output_filename)
+
+    with args.input_filename.open("r", encoding="utf-8") as handle:
+        adc_files = [line.strip() for line in handle if line.strip()]
+
+    pedestal_folders_by_run = _build_pedestal_folder_map(args.pedestal_input_filename)
+
+    if not adc_files:
+        with file_handler.temp_to_output(args.output_filename) as tmp:
+            Path(tmp).write_text("", encoding="utf-8")
+        logger.info("No ADC files found in batch input %s", args.input_filename)
+        return
+
+    worker = partial(
+        _process_batch_run,
         color=color,
-        run=args.run,
-        output_base=args.output_base,
+        pedestal_folders_by_run=pedestal_folders_by_run,
         raw_base=args.raw_base,
         tracks_base=args.tracks_base,
+        overwrite_outputs=overwrite_outputs,
         write_root=args.write_root,
         progress_every=args.progress_every,
+        cluster_smearing_seed=args.cluster_smearing_seed,
+    )
+
+    with Pool(args.num_threads) as pool:
+        results = pool.map(worker, adc_files)
+
+    output_files, run_list = zip(*results)
+    with file_handler.temp_to_output(args.output_filename) as tmp:
+        with Path(tmp).open("w", encoding="utf-8") as handle:
+            for output_file in output_files:
+                handle.write(f"{output_file}\n")
+
+    print(
+        f"Batch {args.output_filename.stem} completed with {args.num_threads} thread(s). Runs: {run_list}",
+        flush=True,
     )
 
 

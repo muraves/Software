@@ -100,7 +100,7 @@ rule analyse:
     threads: THREADS
     container: '/user/abiolchi/muraves-sing.sif'
     input:
-        script = "4_MainRecSof/MURAVES_reco_forsnakemake.py",
+        script = "4_MainRecSof/MURAVES_reco.py",
         data_file = '{output_path}/PARSED/{color}/{version}/ADC_batch{batch_idx}.stamp',
         one_phe_files = "{output_path}/PEDESTAL/{color}/{version}/PIEDISTALLI_batch{batch_idx}.stamp"
     output:
