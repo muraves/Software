@@ -177,12 +177,20 @@ A profile is available in this repository `Software/condor_submit/profile/config
 1. Create a conda environemt with snakemake inside: `conda create -c conda-forge -c bioconda -c nodefaults -n snakemake snakemake`
 2. In order to manage the submission you need: `pip install snakemake-executor-plugin-htcondor` 
 3. Copy the profile configuration file provided in this GitHub repository `Software/condor_submit/profile/config.yaml`, in you T2B folder `$HOME/.config/snakemake/<my_profile>/.`
+4. A dedicated container (`.sif` image needs to be created). Please run the command 
 
-4. Once this is done, you're ready to go. Jobs that will be submitted can be checked as follows:
+    ```bash
+    cd Software/condor_submit/container/
+    singularity build muraves-sing.sif muraves-sing.def
+    ```
+4. Copy the `.sif` image in your `$HOME` directory. This is the image used in the Snakefile. **NB:** You can also keep it keep it here, but then, remember to modify the path in the snakefile.
+*A dedicated container is preferable as the `muraves_lib` package is direclty built it without istalling it everytime that the container is opened. This is only useful for a developing container.*
+
+5. Once this is done, you're ready to go. Jobs that will be submitted can be checked as follows:
     ```bash
     snakemake --profile <my_profile> -n
     ```
-5. The same command without `-n` will actually submit the jobs.
+6. The same command without `-n` will actually submit the jobs.
 
 *Troubleshooting:* If you have more that one conda environment it can potentially mix up things. I kept seeing this error: 
 
