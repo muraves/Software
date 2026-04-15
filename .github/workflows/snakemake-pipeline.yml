@@ -49,7 +49,7 @@ jobs:
              echo '=== Modified config.yaml ===' && \
              cat config.yaml && \
              echo '=== Starting Snakemake ===' && \
-             snakemake --cores 1 -v && \
+             snakemake -j 1 && \
              echo '=== Snakemake completed successfully ===' "
 
       - name: Approve pull request on success
