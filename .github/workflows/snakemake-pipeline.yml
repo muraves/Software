@@ -6,6 +6,12 @@ on:
       - main
       - master
       - dev
+  workflow_dispatch:
+    inputs:
+      run_label:
+        description: "Nome test run"
+        required: false
+        default: "manual-test"
 
 jobs:
   snakemake:
