@@ -1,0 +1,61 @@
+name: Snakemake Pipeline
+
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+      - dev
+
+jobs:
+  snakemake:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build Docker image
+        run: |
+          docker build -t muraves:latest -f Software/environment/docker/Dockerfile .
+
+      - name: Run Snakemake workflow in container
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -v ${{ github.workspace }}/tests/data:/data \
+            muraves:latest bash -c \
+            "cd Software/muraves/tracks_reconstruction && \
+             sed -i \"s|data_path:.*|data_path: '/data'|\" config.yaml && \
+             sed -i \"s|copy_to_data:.*|copy_to_data: False|\" config.yaml && \
+             sed -i \"s|batch_size:.*|batch_size: 1|\" config.yaml && \
+             sed -i \"s|threads:.*|threads: 1|\" config.yaml && \
+             sed -i \"s|batch_idx:.*|batch_idx: \\\"2500\\\"|\" config.yaml && \
+             sed -i \"s|logs_on_console:.*|logs_on_console: True|\" config.yaml && \
+             sed -i \"s|verbose:.*|verbose: info|\" config.yaml && \
+             sed -i \"s|overwrite_outputs:.*|overwrite_outputs: False|\" config.yaml && \
+             echo '=== Modified config.yaml ===' && \
+             cat config.yaml && \
+             echo '=== Starting Snakemake ===' && \
+             snakemake --cores 1 -v && \
+             echo '=== Snakemake completed successfully ===' "
+
+      - name: Approve pull request on success
+        if: success()
+        run: |
+          gh pr review ${{ github.event.pull_request.number }} --approve
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Comment on failure
+        if: failure()
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} \
+            --body "❌ Snakemake pipeline failed. Please check the error logs above."
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
