@@ -7,6 +7,7 @@ from muraves_lib import snakefile_helper
 # The number of boards and channel should go in another configuration file
 
 #test change
+#test change 2
 
 #>>>>>~~~~~~~~~~~~~~~~~~ GLOBAL PARAMETERS  ~~~~~~~~~~~~~~~~~~~
 PNFS = config['data_path']
