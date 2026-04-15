@@ -55,6 +55,8 @@ jobs:
              echo \"CONDA_PREFIX=$CONDA_PREFIX\" && \
              which python && \
              python --version && \
+             python -m pip install --upgrade pip && \
+             python -m pip install -e /workspace && \
              python -c \"import sys; print('PYTHON_EXE=', sys.executable)\" && \
              python -c \"import muraves_lib; print('muraves_lib import OK')\" && \
              echo '=== Starting Snakemake ===' && \
