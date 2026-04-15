@@ -21,7 +21,8 @@ jobs:
           fetch-depth: 0
 
       - name: Enter Docker folder
-        run: cd environment/docker
+        run: |
+          cd environment/docker
 
       - name: Build Docker image
         run: |
