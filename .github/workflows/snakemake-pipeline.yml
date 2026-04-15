@@ -20,9 +20,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Enter Docker folder
+        run: cd environment/docker
+
       - name: Build Docker image
         run: |
-          docker build -t muraves:latest -f environment/docker/Dockerfile .
+          docker build -t muraves:latest -f Dockerfile .
 
       - name: Run Snakemake workflow in container
         run: |
