@@ -51,6 +51,11 @@ fi
 # Open interactive shell with muraves conda environment: 
 # ---------------------------------------------------------
 echo "[INFO] Container ready. Starting shell..."
-exec bash --init-file <(echo "source /opt/conda/etc/profile.d/conda.sh && conda activate muraves")
+if [ $# -gt 0 ]; then
+    source /opt/conda/etc/profile.d/conda.sh && conda activate muraves
+    exec "$@"
+else
+    exec bash --init-file <(echo "source /opt/conda/etc/profile.d/conda.sh && conda activate muraves")
+fi
 
 
