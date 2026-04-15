@@ -51,12 +51,12 @@ jobs:
              echo '===Activating conda environment and running Snakemake=== ' && \
              source /opt/conda/etc/profile.d/conda.sh && conda activate muraves && \
              echo '=== Environment diagnostics ===' && \
-             echo "CONDA_DEFAULT_ENV=$CONDA_DEFAULT_ENV" && \
-             echo "CONDA_PREFIX=$CONDA_PREFIX" && \
+             echo \"CONDA_DEFAULT_ENV=$CONDA_DEFAULT_ENV\" && \
+             echo \"CONDA_PREFIX=$CONDA_PREFIX\" && \
              which python && \
              python --version && \
-             python -c "import sys; print('PYTHON_EXE=', sys.executable)" && \
-             python -c "import muraves_lib; print('muraves_lib import OK')" && \
+             python -c \"import sys; print('PYTHON_EXE=', sys.executable)\" && \
+             python -c \"import muraves_lib; print('muraves_lib import OK')\" && \
              echo '=== Starting Snakemake ===' && \
              snakemake --cores 1 --printshellcmds --show-failed-logs && \
              echo '=== Snakemake completed successfully ===' "
