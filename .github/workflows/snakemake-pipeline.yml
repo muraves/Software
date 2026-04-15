@@ -52,6 +52,7 @@ jobs:
              python --version && \
              python -m pip install --upgrade pip && \
              python -m pip install -e /workspace && \
+             python -m pip install awkward-pandas && \
              python -c \"import sys; print('PYTHON_EXE=', sys.executable)\" && \
              python -c \"import muraves_lib; print('muraves_lib import OK')\" && \
              echo '=== Starting Snakemake ===' && \
