@@ -25,13 +25,15 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          lfs: true
 
       - name: Enter Docker folder
         run: cd environment/docker
 
       - name: Build Docker image
+        working-directory: environment/docker
         run: |
-          docker build -t muraves:latest -f Dockerfile .
+          docker build -t muraves:latest .
 
       - name: Run Snakemake workflow in container
         run: |
@@ -40,26 +42,29 @@ jobs:
             -v ${{ github.workspace }}/test_data:/data \
             muraves:latest bash -c \
             "cd muraves/tracks_reconstruction && \
-             sed -i \"s|data_path:.*|data_path: '/data'|\" config.yaml && \
-             sed -i \"s|copy_to_data:.*|copy_to_data: False|\" config.yaml && \
-             sed -i \"s|batch_size:.*|batch_size: 1|\" config.yaml && \
-             sed -i \"s|threads:.*|threads: 1|\" config.yaml && \
-             sed -i \"s|batch_idx:.*|batch_idx: \\\"2500\\\"|\" config.yaml && \
-             sed -i \"s|logs_on_console:.*|logs_on_console: True|\" config.yaml && \
-             sed -i \"s|verbose:.*|verbose: info|\" config.yaml && \
-             sed -i \"s|overwrite_outputs:.*|overwrite_outputs: False|\" config.yaml && \
+             python -m pip install --quiet pyyaml && \
+             python -c \"import yaml, pathlib; p=pathlib.Path('config.yaml'); c=yaml.safe_load(p.read_text()); c.update({'data_path':'/data','copy_to_data':False,'batch_size':1,'threads':1,'batch_idx':'2500','run':None,'logs_on_console':True,'verbose':'info','overwrite_outputs':False}); p.write_text(yaml.safe_dump(c, sort_keys=False))\" && \
              echo '=== Modified config.yaml ===' && \
              cat config.yaml && \
+             echo '===Activating conda environment and running Snakemake=== ' && \
+             source /opt/conda/etc/profile.d/conda.sh && conda activate muraves && \
+             echo '=== Environment diagnostics ===' && \
+             echo \"CONDA_DEFAULT_ENV=$CONDA_DEFAULT_ENV\" && \
+             echo \"CONDA_PREFIX=$CONDA_PREFIX\" && \
+             which python && \
+             python --version && \
+             python -m pip install --upgrade pip && \
+             python -m pip install -e /workspace && \
+             python -m pip install awkward-pandas && \
+             python -c \"import sys; print('PYTHON_EXE=', sys.executable)\" && \
+             python -c \"import muraves_lib; print('muraves_lib import OK')\" && \
              echo '=== Starting Snakemake ===' && \
-             snakemake --cores 1 -v && \
+             snakemake --cores 1 --printshellcmds --show-failed-logs 2>&1 | tee /tmp/snakemake.log && \
+             if grep -Eq '\\[ERROR\\]|Traceback' /tmp/snakemake.log; then \
+               echo 'Detected error patterns in Snakemake log.'; \
+               exit 1; \
+             fi && \
              echo '=== Snakemake completed successfully ===' "
-
-      - name: Approve pull request on success
-        if: success()
-        run: |
-          gh pr review ${{ github.event.pull_request.number }} --approve
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Comment on failure
         if: failure()
