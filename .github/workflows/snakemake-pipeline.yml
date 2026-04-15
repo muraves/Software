@@ -48,6 +48,8 @@ jobs:
              sed -i \"s|overwrite_outputs:.*|overwrite_outputs: False|\" config.yaml && \
              echo '=== Modified config.yaml ===' && \
              cat config.yaml && \
+             echo '===Activating conda environment and running Snakemake=== ' && \
+             source /opt/conda/etc/profile.d/conda.sh && conda activate muraves && \
              echo '=== Starting Snakemake ===' && \
              snakemake -j 1 && \
              echo '=== Snakemake completed successfully ===' "
