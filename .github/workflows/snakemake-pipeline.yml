@@ -22,15 +22,15 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build -t muraves:latest -f Software/environment/docker/Dockerfile .
+          docker build -t muraves:latest -f environment/docker/Dockerfile .
 
       - name: Run Snakemake workflow in container
         run: |
           docker run --rm \
             -v ${{ github.workspace }}:/workspace \
-            -v ${{ github.workspace }}/tests/data:/data \
+            -v ${{ github.workspace }}/test_data:/data \
             muraves:latest bash -c \
-            "cd Software/muraves/tracks_reconstruction && \
+            "cd muraves/tracks_reconstruction && \
              sed -i \"s|data_path:.*|data_path: '/data'|\" config.yaml && \
              sed -i \"s|copy_to_data:.*|copy_to_data: False|\" config.yaml && \
              sed -i \"s|batch_size:.*|batch_size: 1|\" config.yaml && \
