@@ -56,15 +56,12 @@ jobs:
              python -c \"import sys; print('PYTHON_EXE=', sys.executable)\" && \
              python -c \"import muraves_lib; print('muraves_lib import OK')\" && \
              echo '=== Starting Snakemake ===' && \
-             snakemake --cores 1 --printshellcmds --show-failed-logs && \
+             snakemake --cores 1 --printshellcmds --show-failed-logs 2>&1 | tee /tmp/snakemake.log && \
+             if grep -Eq '\\[ERROR\\]|Traceback' /tmp/snakemake.log; then \
+               echo 'Detected error patterns in Snakemake log.'; \
+               exit 1; \
+             fi && \
              echo '=== Snakemake completed successfully ===' "
-
-      - name: Approve pull request on success
-        if: success()
-        run: |
-          gh pr review ${{ github.event.pull_request.number }} --approve
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Comment on failure
         if: failure()
