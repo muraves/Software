@@ -27,6 +27,9 @@ jobs:
           fetch-depth: 0
           lfs: true
 
+      - name: Enter Docker folder
+        run: cd environment/docker
+
       - name: Build Docker image
         working-directory: environment/docker
         run: |
