@@ -66,6 +66,8 @@ build/
 *.pkl
 *.csv
 !test_data/**
+*.json
+*.root
 
 # snakemake #
 ################
