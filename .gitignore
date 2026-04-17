@@ -5,6 +5,11 @@
 # Ignore all PDF files
 *.pdf
 
+#Ignore plots
+*.png
+*.jpg
+*.jpeg
+
 
 # Compiled source #
 ###################
