@@ -9,7 +9,7 @@ from typing import Sequence
 
 from SearchFileName import Search_File
 from ClusterLists import CreateClusterList, DeterministicSmearingRNG
-from evaluate_angular_coordinates import TrackAngularCoordinates
+from Evaluate_Angular_Coordinates import TrackAngularCoordinates
 from ReadEvent import ReadEvent
 from Tracking import MakeTracks
 
