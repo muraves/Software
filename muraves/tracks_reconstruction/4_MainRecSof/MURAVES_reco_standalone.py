@@ -457,7 +457,7 @@ def run_reconstruction(
     slow_control_file = raw_base / color / f"{path_cfg['slow_control_prefix']}{run}"
     trigger_rate, temperature, working_point = _read_slow_control(slow_control_file, run, cfg)
 
-    spiroc_cfg = tracks_base / str(path_cfg.get("spiroc_map_relative", "AncillaryFiles/spiroc-hybrid-map.cfg"))
+    spiroc_cfg = tracks_base / str(path_cfg.get("spiroc_map_relative", "muraves_cfg_files/spiroc-hybrid-map.cfg"))
     # The SPiROC mapping file defines the strip-to-channel mapping for each board, which is crucial for correctly interpreting the ADC data and applying pedestals. The C++ code relies on this mapping to reorder channels and access pedestals in the correct order, so we must load it before processing events.
     sorted_channels = _load_spiroc_mapping(spiroc_cfg)
 
@@ -473,7 +473,7 @@ def run_reconstruction(
         pedestal_folder, n_boards, sorted_channels
     )
 
-    telescope_cfg = tracks_base / str(path_cfg.get("telescope_cfg_template", "AncillaryFiles/telescope{color}.cfg")).format(color=color)
+    telescope_cfg = tracks_base / str(path_cfg.get("telescope_cfg_template", "muraves_cfg_files/telescope{color}.cfg")).format(color=color)
     n_stations, views = _load_telescope_config(telescope_cfg)
     if len(n_stations) < n_boards or len(views) < n_boards:
         raise ValueError(
@@ -1458,10 +1458,12 @@ def main() -> None:
     pre_parser.add_argument("--base-config", type=Path, default=None)
     pre_args, _ = pre_parser.parse_known_args()
 
-    # For standalone scripts, use standalone_reco_parameters.json by default
+    # For standalone scripts, use muraves_cfg_files/standalone_reco_parameters.json by default
     config_path = pre_args.config
     if config_path is None:
-        standalone_config_default = Path(__file__).parent / "standalone_reco_parameters.json"
+        standalone_config_default = (
+            Path(__file__).resolve().parent.parent / "muraves_cfg_files" / "standalone_reco_parameters.json"
+        )
         if standalone_config_default.exists():
             config_path = standalone_config_default
 

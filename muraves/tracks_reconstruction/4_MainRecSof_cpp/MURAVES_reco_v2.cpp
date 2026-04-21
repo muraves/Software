@@ -588,7 +588,7 @@ int main(int argc, char* argv[]) {
   int st, ch;
   vector <int>  strips, channels, sorted_ch,sorted_strips;
   string line_c;  
-  Spiroc_config.open("/workspace/Software/muraves/tracks_reconstruction/AncillaryFiles/spiroc-hybrid-map.cfg");
+  Spiroc_config.open("/workspace/Software/muraves/tracks_reconstruction/muraves_cfg_files/spiroc-hybrid-map.cfg");
   int l=0;
   /// //READING SPIROC/HYRID MAP FILE //////////////////////////////////////////////////////////////
   if(Spiroc_config.is_open()) {
@@ -714,7 +714,7 @@ int main(int argc, char* argv[]) {
 
   // READ TELESCOPE CONFIGURATION  ----> CORRESPONDACE BOARD - N STATION - VIEW //////// ///////////////////////////////
   char  telescopeConfig_name[10000];
-  strcpy(telescopeConfig_name,"/workspace/Software/muraves/tracks_reconstruction/AncillaryFiles/telescope");
+  strcpy(telescopeConfig_name,"/workspace/Software/muraves/tracks_reconstruction/muraves_cfg_files/telescope");
   strncat(telescopeConfig_name,color,10);
   strncat(telescopeConfig_name,".cfg",5);
 
