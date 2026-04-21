@@ -431,7 +431,7 @@ def run_reconstruction(
     #const double AdiacentStripsDistance = 0.0165;
 
     # PATHS
-    reconstructed_path = output_base / str(path_cfg["reconstructed_dirname"]) / color
+    reconstructed_path = output_base / str(path_cfg.get("reconstructed_dirname", "RECONSTRUCTED")) / color
     reconstructed_path.mkdir(parents=True, exist_ok=True)
 
     analysis_jsonl = reconstructed_path / f"MURAVES_AnalyzedData_run{run}.jsonl"
@@ -457,7 +457,7 @@ def run_reconstruction(
     slow_control_file = raw_base / color / f"{path_cfg['slow_control_prefix']}{run}"
     trigger_rate, temperature, working_point = _read_slow_control(slow_control_file, run, cfg)
 
-    spiroc_cfg = tracks_base / str(path_cfg["spiroc_map_relative"])
+    spiroc_cfg = tracks_base / str(path_cfg.get("spiroc_map_relative", "AncillaryFiles/spiroc-hybrid-map.cfg"))
     # The SPiROC mapping file defines the strip-to-channel mapping for each board, which is crucial for correctly interpreting the ADC data and applying pedestals. The C++ code relies on this mapping to reorder channels and access pedestals in the correct order, so we must load it before processing events.
     sorted_channels = _load_spiroc_mapping(spiroc_cfg)
 
@@ -473,7 +473,7 @@ def run_reconstruction(
         pedestal_folder, n_boards, sorted_channels
     )
 
-    telescope_cfg = tracks_base / str(path_cfg["telescope_cfg_template"]).format(color=color)
+    telescope_cfg = tracks_base / str(path_cfg.get("telescope_cfg_template", "AncillaryFiles/telescope{color}.cfg")).format(color=color)
     n_stations, views = _load_telescope_config(telescope_cfg)
     if len(n_stations) < n_boards or len(views) < n_boards:
         raise ValueError(
@@ -1458,12 +1458,22 @@ def main() -> None:
     pre_parser.add_argument("--base-config", type=Path, default=None)
     pre_args, _ = pre_parser.parse_known_args()
 
-    preloaded_config = get_reco_config(pre_args.config, pre_args.base_config)
+    # For standalone scripts, use standalone_reco_parameters.json by default
+    config_path = pre_args.config
+    if config_path is None:
+        standalone_config_default = Path(__file__).parent / "standalone_reco_parameters.json"
+        if standalone_config_default.exists():
+            config_path = standalone_config_default
+
+    preloaded_config = get_reco_config(config_path, pre_args.base_config)
     args = parse_args(preloaded_config)
 
     if args.config is not None or args.base_config is not None:
         set_runtime_config_path(args.config, args.base_config)
-    config = get_reco_config(args.config, args.base_config)
+    
+    # Load with the determined config path
+    final_config_path = args.config if args.config is not None else config_path
+    config = get_reco_config(final_config_path, args.base_config)
     color = args.color.upper()
     run_reconstruction(
         color=color,
