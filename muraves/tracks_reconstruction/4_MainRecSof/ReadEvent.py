@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Sequence
 
+from reco_config import get_reco_config
+
 
 @dataclass
 class EventStruct:
@@ -25,9 +27,15 @@ def ReadEvent(ADCline: str, stripIndices: Sequence[int]) -> EventStruct:
     """Python port of ReadEvent from ReadEvent.cc."""
     adcdata_splitted = ADCline.rstrip("\n").split("\t")
 
-    n_info_board = 39
-    n_channels = 32
-    n_boards = 16
+    cfg = get_reco_config()["read_event"]
+    n_info_board = int(cfg["n_info_board"])
+    n_channels = int(cfg["n_channels"])
+    n_boards = int(cfg["n_boards"])
+    time_stamp_index = int(cfg["time_stamp_index"])
+    time_exp_offset = int(cfg["time_exp_offset"])
+    trigger_mask_offset = int(cfg["trigger_mask_offset"])
+    adc_offset = int(cfg["adc_offset"])
+    trigger_mask_separator = str(cfg["trigger_mask_separator"])
 
     boards: list[list[float]] = []
     all_time_exp: list[float] = []
@@ -36,12 +44,16 @@ def ReadEvent(ADCline: str, stripIndices: Sequence[int]) -> EventStruct:
     boards_trigger_masks_strips: list[list[float]] = []
     trigger_mask_sizes: list[int] = []
 
-    time_stamp = _safe_float(adcdata_splitted[35]) if len(adcdata_splitted) > 35 else 0.0
+    time_stamp = (
+        _safe_float(adcdata_splitted[time_stamp_index])
+        if len(adcdata_splitted) > time_stamp_index
+        else 0.0
+    )
 
     for n in range(n_boards):
         base_idx = n * n_info_board
-        time_exp_idx = base_idx + 37
-        trmask_idx = base_idx + 39
+        time_exp_idx = base_idx + time_exp_offset
+        trmask_idx = base_idx + trigger_mask_offset
         
         # When it is read to be zero, it means that the board was not involved in the trigger, so we can safely set it to 0.0 in that case.
         # This variables is used later to apply a time cut on the event, namely to check if the time of the event is within a certain range from the trigger time. If the board was not involved in the trigger, it should not contribute to the timing of the event, so setting it to 0.0 is a reasonable default that allows us to ignore it in timing calculations.
@@ -52,7 +64,7 @@ def ReadEvent(ADCline: str, stripIndices: Sequence[int]) -> EventStruct:
         trmask_strips: list[float] = []
 
         trmask_string = adcdata_splitted[trmask_idx] if len(adcdata_splitted) > trmask_idx else ""
-        trmask_vect_split = [token for token in trmask_string.split("_") if token != ""]
+        trmask_vect_split = [token for token in trmask_string.split(trigger_mask_separator) if token != ""]
 
         # The trigger mask string is expected to contain channel numbers separated by underscores. 
         # We split the string by underscores and convert each token to an integer channel number. 
@@ -84,7 +96,7 @@ def ReadEvent(ADCline: str, stripIndices: Sequence[int]) -> EventStruct:
 
         all_adc: list[float] = []
         for n_ch in range(n_channels):
-            adc_idx = 3 + base_idx + n_ch
+            adc_idx = adc_offset + base_idx + n_ch
             adc_value = _safe_float(adcdata_splitted[adc_idx]) if len(adcdata_splitted) > adc_idx else 0.0
             all_adc.append(adc_value)
         # We need to reorder the ADC values according to the stripIndices, which represent the mapping from channel numbers to strip indices. 
