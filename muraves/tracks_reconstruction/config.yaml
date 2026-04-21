@@ -49,9 +49,9 @@ overwrite_outputs: True # (True/False) if True, existing output files will be ov
 
 #-----------execution configuration files-----------------
 execution_config:
-  reco_parameters_file: "4_MainRecSof/reco_parameters.json"
+  reco_parameters_file: "muraves_cfg_files/reco_parameters.json"
   # Optional override file merged on top of reco_parameters_file. Leave empty to disable.
   reco_override_file: ""
-  spiroc_mapping_file: "AncillaryFiles/spiroc-hybrid-map.cfg"
-  telescope_cfg_template: "AncillaryFiles/telescope{color}.cfg"
+  spiroc_mapping_file: "muraves_cfg_files/spiroc-hybrid-map.cfg"
+  telescope_cfg_template: "muraves_cfg_files/telescope{color}.cfg"
 
