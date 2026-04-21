@@ -12,10 +12,10 @@ HOME = os.path.expandvars('/user/abiolchi/muraves_outputs')
 BATCH_SIZE = config['batch_size'] 
 THREADS = config['threads']
 EXEC_CFG = config.get('execution_config', {})
-RECO_PARAMETERS_FILE = EXEC_CFG.get('reco_parameters_file', '4_MainRecSof/reco_parameters.json')
+RECO_PARAMETERS_FILE = EXEC_CFG.get('reco_parameters_file', 'muraves_cfg_files/reco_parameters.json')
 RECO_OVERRIDE_FILE = EXEC_CFG.get('reco_override_file', '')
-SPIROC_MAPPING_FILE = EXEC_CFG.get('spiroc_mapping_file', 'AncillaryFiles/SPiROC2D_fiber_mapping.cfg')
-TELESCOPE_CFG_TEMPLATE = EXEC_CFG.get('telescope_cfg_template', 'AncillaryFiles/telescope_{color}.cfg')
+SPIROC_MAPPING_FILE = EXEC_CFG.get('spiroc_mapping_file', 'muraves_cfg_files/spiroc-hybrid-map.cfg')
+TELESCOPE_CFG_TEMPLATE = EXEC_CFG.get('telescope_cfg_template', 'muraves_cfg_files/telescope{color}.cfg')
 SELECTED_RECO_CONFIG = RECO_OVERRIDE_FILE if RECO_OVERRIDE_FILE else RECO_PARAMETERS_FILE
 CLUSTER_SMEARING_SEED = config.get('cluster_smearing_seed', None)
 if config['run']:
