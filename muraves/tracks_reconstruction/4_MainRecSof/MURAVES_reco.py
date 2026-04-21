@@ -12,6 +12,7 @@ from ClusterLists import CreateClusterList, DeterministicSmearingRNG
 from Evaluate_Angular_Coordinates import TrackAngularCoordinates
 from ReadEvent import ReadEvent
 from Tracking import MakeTracks
+from reco_config import get_reco_config, resolve_first_existing, set_runtime_config_path
 
 from muraves_lib import file_handler
 from multiprocessing import Pool
@@ -30,7 +31,9 @@ def _mean_rms(values: Sequence[float]) -> tuple[float, float]:
     return mean, rms
 
 
-def _read_slow_control(slow_control_path: Path, run: int) -> tuple[float, float, float]:
+def _read_slow_control(
+    slow_control_path: Path, run: int, config: dict
+) -> tuple[float, float, float]:
     trigger_rate = 0.0
     temperature = 0.0
     working_point = 0.0
@@ -38,28 +41,36 @@ def _read_slow_control(slow_control_path: Path, run: int) -> tuple[float, float,
     if not slow_control_path.exists():
         return trigger_rate, temperature, working_point
 
+    slow_control_cfg = config["slow_control"]
+    delimiter = str(slow_control_cfg["delimiter"])
+    minimum_fields = int(slow_control_cfg["minimum_fields"])
+    run_index = int(slow_control_cfg["run_index"])
+    trigger_rate_index = int(slow_control_cfg["trigger_rate_index"])
+    temperature_index = int(slow_control_cfg["temperature_index"])
+    working_point_index = int(slow_control_cfg["working_point_index"])
+
     with slow_control_path.open("r", encoding="utf-8", errors="ignore") as handle:
         for raw_line in handle:
-            fields = raw_line.rstrip("\n").split("\t")
-            if len(fields) < 44:
+            fields = raw_line.rstrip("\n").split(delimiter)
+            if len(fields) < minimum_fields:
                 continue
 
             try:
-                sc_run = int(float(fields[0]))
+                sc_run = int(float(fields[run_index]))
             except ValueError:
                 continue
 
             if sc_run == run:
                 try:
-                    trigger_rate = float(fields[43])
+                    trigger_rate = float(fields[trigger_rate_index])
                 except ValueError:
                     trigger_rate = 0.0
                 try:
-                    temperature = float(fields[3])
+                    temperature = float(fields[temperature_index])
                 except ValueError:
                     temperature = 0.0
                 try:
-                    working_point = float(fields[5])
+                    working_point = float(fields[working_point_index])
                 except ValueError:
                     working_point = 0.0
                 break
@@ -181,18 +192,14 @@ def _safe_get(container: Sequence[Sequence[float]], idx: int) -> Sequence[float]
     return container[idx] if 0 <= idx < len(container) else []
 
 
-def _resolve_default_output_base() -> Path:
-    workspace_base = Path("/workspace/muraves_outputs")
-    if workspace_base.exists():
-        return workspace_base
-    return Path("/user/abiolchi/muraves_outputs")
+def _resolve_default_output_base(config: dict) -> Path:
+    cfg = config["paths"]
+    return resolve_first_existing(list(cfg["output_base_candidates"]))
 
 
-def _resolve_default_raw_base() -> Path:
-    data_base = Path("/data/RAW_GZ")
-    if data_base.exists():
-        return data_base
-    return Path("/user/abiolchi/data/RAW_GZ")
+def _resolve_default_raw_base(config: dict) -> Path:
+    cfg = config["paths"]
+    return resolve_first_existing(list(cfg["raw_base_candidates"]))
 
 
 def write_root_outputs(
@@ -387,44 +394,45 @@ def run_reconstruction(
     write_root: bool = False,
     progress_every: int = 1000,
     cluster_smearing_seed: int | None = None,
+    config: dict | None = None,
 ) -> tuple[Path, Path]:
     """Run full event reconstruction for one run and emit JSON (and optional ROOT)."""
     print(" ~~~~~~~  Welcome to the MURAVES reconstruction (Python) ~~~~~~~~")
     total_start_wall_time = time.time()
     json_event_output_elapsed = 0.0
 
-    # Geometry
-    if color == "ROSSO":
-        z_add = [0.292, 0.251, 0.207, 0.0]
-        x_pos = [-0.265, 0.0, 0.262, 1.475]
-    elif color == "NERO":
-        z_add = [0.293, 0.251, 0.210, 0.0]
-        x_pos = [-0.26, 0.0, 0.262, 1.492]
-    elif color == "BLU":
-        z_add = [0.2712, 0.2312, 0.1892, 0.0]
-        x_pos = [-0.26, 0.0, 0.262, 1.492]
-    else:
-        raise ValueError(f"Unsupported detector color: {color}")
+    cfg = config or get_reco_config()
+    geometry_cfg = cfg["detector_geometry"]
+    reco_cfg = cfg["reconstruction"]
+    path_cfg = cfg["paths"]
 
-    y_add = [0.0, 0.0, 0.0]
+    # Geometry
+    if color not in geometry_cfg:
+        raise ValueError(f"Unsupported detector color: {color}")
+    z_add = [float(v) for v in geometry_cfg[color]["z_add"]]
+    x_pos = [float(v) for v in geometry_cfg[color]["x_pos"]]
+
+    y_add = [float(v) for v in reco_cfg["y_add"]]
 
     # SPACIAL RESOLUTION PARAMETERS (C++ values: sigma_z=0.0040, sigma_y=0.0035)
-    sigma_z = 0.0040
-    sigma_y = 0.0035
+    sigma_z = float(reco_cfg["sigma_z"])
+    sigma_y = float(reco_cfg["sigma_y"])
 
     # CLUSTERING PARAMETERS (C++ values: s1=6, s2=10, s3=2)
-    s1 = 6.0 # cluster strips must have at least this energy to be seed
-    s2 = 10.0 # single strip clusters must have at least this energy to be accepted as 1-strip cluster
-    s3 = 2.0 # adiacent strips must have at least this energy to be merged into cluster
+    cluster_cfg = reco_cfg["cluster_thresholds"]
+    s1 = float(cluster_cfg["s1"]) # cluster strips must have at least this energy to be seed
+    s2 = float(cluster_cfg["s2"]) # single strip clusters must have at least this energy to be accepted as 1-strip cluster
+    s3 = float(cluster_cfg["s3"]) # adiacent strips must have at least this energy to be merged into cluster
 
     # TRACKING PARAMETERS
     # C++ code uses 5*sigma_z and 5*sigma_y as proximity cuts for track building, we keep the same values here.
-    proximity_cut_xz = 5 * sigma_z # from C++ comment: "point-trackcandidate distance requirement"
-    proximity_cut_xy = 5 * sigma_y # from C++ comment: "point-trackcandidate distance requirement"
+    proximity_multiplier = float(reco_cfg["proximity_sigma_multiplier"])
+    proximity_cut_xz = proximity_multiplier * sigma_z # from C++ comment: "point-trackcandidate distance requirement"
+    proximity_cut_xy = proximity_multiplier * sigma_y # from C++ comment: "point-trackcandidate distance requirement"
 
     # CONSTANT PARAMETERS
-    n_boards = 16
-    n_channels = 32
+    n_boards = int(reco_cfg["n_boards"])
+    n_channels = int(reco_cfg["n_channels"])
     # additional parameter available in C++ but not used: 
     #const int nInfo = 168;
     #const int nChInfo = 5;
@@ -447,9 +455,9 @@ def run_reconstruction(
 
     print(f"[progress] Input ADC file: {adc_file}", flush=True)
 
-    trigger_rate, temperature, working_point = _read_slow_control(slow_control_file, run)
+    trigger_rate, temperature, working_point = _read_slow_control(slow_control_file, run, cfg)
 
-    spiroc_cfg = tracks_base / "AncillaryFiles" / "spiroc-hybrid-map.cfg"
+    spiroc_cfg = tracks_base / str(path_cfg["spiroc_map_relative"])
     # The SPiROC mapping file defines the strip-to-channel mapping for each board, which is crucial for correctly interpreting the ADC data and applying pedestals. The C++ code relies on this mapping to reorder channels and access pedestals in the correct order, so we must load it before processing events.
     sorted_channels = _load_spiroc_mapping(spiroc_cfg)
 
@@ -458,7 +466,7 @@ def run_reconstruction(
         pedestal_folder, n_boards, sorted_channels
     )
 
-    telescope_cfg = tracks_base / "AncillaryFiles" / f"telescope{color}.cfg"
+    telescope_cfg = tracks_base / str(path_cfg["telescope_cfg_template"]).format(color=color)
     n_stations, views = _load_telescope_config(telescope_cfg)
     if len(n_stations) < n_boards or len(views) < n_boards:
         raise ValueError(
@@ -1406,6 +1414,7 @@ def _process_batch_run(
     write_root: bool,
     progress_every: int,
     cluster_smearing_seed: int | None,
+    config: dict,
 ) -> tuple[Path, int]:
     adc_file = Path(adc_file_str)
     run = _extract_run_number(adc_file)
@@ -1416,7 +1425,9 @@ def _process_batch_run(
             f"No pedestal outputs found for run {run} in the provided pedestal batch file"
         )
 
-    reconstructed_path = adc_file.parents[3] / "RECONSTRUCTED" / adc_file.parents[1].name / adc_file.parent.name
+    reconstructed_dirname = str(config["paths"]["reconstructed_dirname"])
+    slow_control_prefix = str(config["paths"]["slow_control_prefix"])
+    reconstructed_path = adc_file.parents[3] / reconstructed_dirname / adc_file.parents[1].name / adc_file.parent.name
     analysis_jsonl = reconstructed_path / f"MURAVES_AnalyzedData_run{run}.jsonl"
     analyzed_root = reconstructed_path / f"MURAVES_AnalyzedData_run{run}.root"
     primary_output = analyzed_root if write_root else analysis_jsonl
@@ -1433,16 +1444,19 @@ def _process_batch_run(
         adc_file=adc_file,
         pedestal_folder=pedestal_folder,
         reconstructed_path=reconstructed_path,
-        slow_control_file=raw_base / color / f"SLOWCONTROL_run{run}",
+        slow_control_file=raw_base / color / f"{slow_control_prefix}{run}",
         tracks_base=tracks_base,
         write_root=write_root,
         progress_every=progress_every,
         cluster_smearing_seed=cluster_smearing_seed,
+        config=config,
     )
     return primary_output, run
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(config_defaults: dict | None = None) -> argparse.Namespace:
+    if config_defaults is None:
+        config_defaults = get_reco_config()
     parser = argparse.ArgumentParser(
         description=(
             "Batch MURAVES reconstruction entrypoint for Snakemake. "
@@ -1477,7 +1491,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--raw-base",
         type=Path,
-        default=_resolve_default_raw_base(),
+        default=_resolve_default_raw_base(config_defaults),
         help="Base RAW folder that contains <COLOR>/SLOWCONTROL_run<run>",
     )
     parser.add_argument(
@@ -1487,6 +1501,18 @@ def parse_args() -> argparse.Namespace:
         help="tracks_reconstruction base path (contains AncillaryFiles)",
     )
     parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="Optional JSON override for reconstruction parameters.",
+    )
+    parser.add_argument(
+        "--base-config",
+        type=Path,
+        default=None,
+        help="Optional base JSON configuration for reconstruction parameters.",
+    )
+    parser.add_argument(
         "--write-root",
         action="store_true",
         help="Also export ROOT files from the generated JSON outputs.",
@@ -1494,7 +1520,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--progress-every",
         type=int,
-        default=1000,
+        default=int(config_defaults["reconstruction"]["progress_every_default"]),
         help="Print progress every N events within each run (set 0 to disable).",
     )
     parser.add_argument(
@@ -1540,7 +1566,17 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    args = parse_args()
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument("--config", type=Path, default=None)
+    pre_parser.add_argument("--base-config", type=Path, default=None)
+    pre_args, _ = pre_parser.parse_known_args()
+
+    preloaded_config = get_reco_config(pre_args.config, pre_args.base_config)
+    args = parse_args(preloaded_config)
+
+    if args.config is not None or args.base_config is not None:
+        set_runtime_config_path(args.config, args.base_config)
+    config = get_reco_config(args.config, args.base_config)
     color = args.color.upper()
     overwrite_outputs = _parse_bool_flag(args.overwrite_outputs)
 
@@ -1567,6 +1603,7 @@ def main() -> None:
         write_root=args.write_root,
         progress_every=args.progress_every,
         cluster_smearing_seed=args.cluster_smearing_seed,
+        config=config,
     )
 
     with Pool(args.num_threads) as pool:

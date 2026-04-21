@@ -2,7 +2,7 @@
 # For production on T2B -> data_path: "/pnfs/iihe/muraves/muraves_DATA/"
 
 #-----------processing parameters-----------------
-data_path: '/data' # Path where data are stored ['/data',"/pnfs/iihe/muraves/muraves_DATA", ...]. 
+data_path: '/user/abiolchi/Software/test_data' # Path where data are stored ['/data',"/pnfs/iihe/muraves/muraves_DATA", ...]. 
 # This should be the path recongnised by the condor node or the container where the code is executed.
 
 #scratch_path: "$TMPDIR" 
@@ -13,8 +13,8 @@ copy_to_data: False
 # True:  temporary files will be copied to the data_path at the end of the execution, and deleted from the scratch_path
 # False: they will be copied into your home directory $HOME/muraves_outputs, and deleted from the scratch_path
 
-batch_size: 2 # number of runs to be executed in parallel.
-threads: 2 # number of cores requested per rule.
+batch_size: 1 # number of runs to be executed in parallel.
+threads: 1 # number of cores requested per rule.
 
 
 #-----------selection parameters-----------------
@@ -40,10 +40,18 @@ run:
   #2500,2509
   
   # A: execute A
-  "2546,2547"
+  "2500"
 
 
 logs_on_console: False #(True/False)
 verbose: info # (debug/info/warning/error/critical)
 overwrite_outputs: True # (True/False) if True, existing output files will be overwritten. If False, existing output files will be kept and the corresponding runs will be skipped.
+
+#-----------execution configuration files-----------------
+execution_config:
+  reco_parameters_file: "4_MainRecSof/reco_parameters.json"
+  # Optional override file merged on top of reco_parameters_file. Leave empty to disable.
+  reco_override_file: ""
+  spiroc_mapping_file: "AncillaryFiles/spiroc-hybrid-map.cfg"
+  telescope_cfg_template: "AncillaryFiles/telescope{color}.cfg"
 

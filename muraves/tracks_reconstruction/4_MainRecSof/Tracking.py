@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 import math
 from typing import Sequence
 
+from reco_config import get_reco_config
+
 
 @dataclass
 class TracksCollection:
@@ -108,10 +110,14 @@ def MakeTracks(
     """Python port of MakeTracks from Tracking.cc."""
     del Texp_cl4  # kept for signature compatibility with C++
 
-    first_strip_pos = -0.528
-    adjacent_strips_distance = 0.0165
+    cfg = get_reco_config()["tracking"]
+    cluster_cfg = get_reco_config()["cluster_lists"]
+    first_strip_pos = float(cfg["first_strip_pos"])
+    adjacent_strips_distance = float(cfg["adjacent_strips_distance"])
+    scattering_pi = float(cfg["scattering_pi"])
+    n_strips = int(cluster_cfg["n_strips"])
     min_p4 = first_strip_pos
-    max_p4 = first_strip_pos + 63 * adjacent_strips_distance
+    max_p4 = first_strip_pos + (n_strips - 1) * adjacent_strips_distance
 
     intercept_3ptracks: list[float] = []
     slope_3ptracks: list[float] = []
@@ -162,7 +168,7 @@ def MakeTracks(
 
     best_chi_index = -1
     best_energy_index = -1
-    best_chi = 10000.0
+    best_chi = float("inf")
     best_energy = 0.0
     ntracks = 0
 
@@ -324,7 +330,7 @@ def MakeTracks(
                                     sign = 0.0
                                 else:
                                     sign = displacement / abs(displacement)
-                                theta_scatter.append(sign * math.acos(cos_scatt) * (180.0 / 3.14159))
+                                theta_scatter.append(sign * math.acos(cos_scatt) * (180.0 / scattering_pi))
 
                         scattering_angles.append(theta_scatter)
                         position_c4.append(single_position_c4)

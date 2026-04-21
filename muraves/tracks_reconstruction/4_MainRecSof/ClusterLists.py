@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 import random
 from typing import Sequence
 
+from reco_config import get_reco_config
+
 
 @dataclass
 class ClusterCollection:
@@ -74,11 +76,14 @@ def CreateClusterList(
     The implementation intentionally mirrors the C++ logic, including cluster
     ordering by energy and the single-strip random position smearing.
     """
-    max_strip_energy = 3000.0
-    first_strip_pos = -0.528
-    adjacent_strips_distance = 0.0165
-    n_strips = 64
-    min_energy_trigger_mask = 20.0
+    cfg = get_reco_config()["cluster_lists"]
+    max_strip_energy = float(cfg["max_strip_energy"])
+    first_strip_pos = float(cfg["first_strip_pos"])
+    adjacent_strips_distance = float(cfg["adjacent_strips_distance"])
+    n_strips = int(cfg["n_strips"])
+    min_energy_trigger_mask = float(cfg["min_energy_trigger_mask"])
+    split_board_index = int(cfg["split_board_index"])
+    smearing_scale = int(cfg["single_strip_smearing_scale"])
 
     cluster_strips_deposits: list[float] = []
     cluster_strips_pos: list[float] = []
@@ -113,14 +118,14 @@ def CreateClusterList(
 
         if deposit > min_energy_trigger_mask:
             # condition regarding strips of the first borad (0-31) 
-            if st < 32:
+            if st < split_board_index:
                 # if the strips is not in the trigger mask of the first board, there is no cluster.
                 if st not in TriggerMask1:
                     cluster_is_on = False
             # condition regarding strips belonging to the second board (32-63)
             else:
                 # if the strips is not in the trigger mask of the second board, there is no cluster.
-                if (st - 32) not in TriggerMask2:
+                if (st - split_board_index) not in TriggerMask2:
                     cluster_is_on = False
         
         # (?) In the C++ code, there is an additional condition that checks if the strip index is the last one (n_strips - 1) and if so, it turns off the cluster.
@@ -180,10 +185,10 @@ def CreateClusterList(
                 cluster_position = clu_pos / clu_en
                 if clu_size == 1:
                     # Keep C++ granularity: integer millimeter steps after 1/1000 scaling.
-                    range_from = int(-1000 * adjacent_strips_distance / 2)
-                    range_to = int(1000 * adjacent_strips_distance / 2)
+                    range_from = int(-smearing_scale * adjacent_strips_distance / 2)
+                    range_to = int(smearing_scale * adjacent_strips_distance / 2)
                     rng = smearing_rng if smearing_rng is not None else nondeterministic_rng
-                    cluster_position += rng.randint(range_from, range_to) / 1000.0
+                    cluster_position += rng.randint(range_from, range_to) / float(smearing_scale)
 
                 cluster_positions.append(cluster_position)
                 cluster_energies.append(clu_en)
@@ -216,8 +221,8 @@ def CreateClusterList(
     sorted_clusters_strips_id: list[list[float]] = []
     texp_cluster: list[float] = []
 
-    split_boundary_low = first_strip_pos + 31 * adjacent_strips_distance
-    split_boundary_high = first_strip_pos + 32 * adjacent_strips_distance
+    split_boundary_low = first_strip_pos + (split_board_index - 1) * adjacent_strips_distance
+    split_boundary_high = first_strip_pos + split_board_index * adjacent_strips_distance
 
     for idx in ordered_cluster_indices:
         pos = cluster_positions[idx]
