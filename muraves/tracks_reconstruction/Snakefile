@@ -131,6 +131,8 @@ rule analyse:
         "-o {output.output_filename} "
         "--raw-base {params.raw_base} "
         "--tracks-base {params.tracks_base} "
+        "--spiroc-mapping-file {input.spiroc_mapping} "
+        "--telescope-config-file {input.telescope_cfg} "
         "--base-config {input.reco_parameters} "
         "--config {params.reco_config_file} "
         "{params.cluster_smearing_seed_arg} "

@@ -1,21 +1,4 @@
 {
-  "paths": {
-    "output_base_candidates": [
-      "/workspace/muraves_outputs",
-      "/user/abiolchi/muraves_outputs"
-    ],
-    "raw_base_candidates": [
-      "/data/RAW_GZ",
-      "/user/abiolchi/data/RAW_GZ"
-    ],
-    "parsed_dirname": "PARSED",
-    "pedestal_dirname": "PEDESTAL",
-    "reconstructed_dirname": "RECONSTRUCTED",
-    "default_data_version": "v0",
-    "slow_control_prefix": "SLOWCONTROL_run",
-    "spiroc_map_relative": "AncillaryFiles/spiroc-hybrid-map.cfg",
-    "telescope_cfg_template": "AncillaryFiles/telescope{color}.cfg"
-  },
   "detector_geometry": {
     "ROSSO": {
       "z_add": [0.292, 0.251, 0.207, 0.0],
