@@ -192,16 +192,6 @@ def _safe_get(container: Sequence[Sequence[float]], idx: int) -> Sequence[float]
     return container[idx] if 0 <= idx < len(container) else []
 
 
-def _resolve_default_output_base(config: dict) -> Path:
-    cfg = config["paths"]
-    return resolve_first_existing(list(cfg["output_base_candidates"]))
-
-
-def _resolve_default_raw_base(config: dict) -> Path:
-    cfg = config["paths"]
-    return resolve_first_existing(list(cfg["raw_base_candidates"]))
-
-
 def write_root_outputs(
     analysis_jsonl: Path,
     mini_summary_json: Path,
@@ -390,7 +380,8 @@ def run_reconstruction(
     pedestal_folder: Path,
     reconstructed_path: Path,
     slow_control_file: Path,
-    tracks_base: Path,
+    spiroc_mapping_file: Path,
+    telescope_config_file: Path,
     write_root: bool = False,
     progress_every: int = 1000,
     cluster_smearing_seed: int | None = None,
@@ -404,7 +395,6 @@ def run_reconstruction(
     cfg = config or get_reco_config()
     geometry_cfg = cfg["detector_geometry"]
     reco_cfg = cfg["reconstruction"]
-    path_cfg = cfg["paths"]
 
     # Geometry
     if color not in geometry_cfg:
@@ -457,7 +447,7 @@ def run_reconstruction(
 
     trigger_rate, temperature, working_point = _read_slow_control(slow_control_file, run, cfg)
 
-    spiroc_cfg = tracks_base / str(path_cfg["spiroc_map_relative"])
+    spiroc_cfg = Path(spiroc_mapping_file)
     # The SPiROC mapping file defines the strip-to-channel mapping for each board, which is crucial for correctly interpreting the ADC data and applying pedestals. The C++ code relies on this mapping to reorder channels and access pedestals in the correct order, so we must load it before processing events.
     sorted_channels = _load_spiroc_mapping(spiroc_cfg)
 
@@ -466,7 +456,7 @@ def run_reconstruction(
         pedestal_folder, n_boards, sorted_channels
     )
 
-    telescope_cfg = tracks_base / str(path_cfg["telescope_cfg_template"]).format(color=color)
+    telescope_cfg = Path(telescope_config_file)
     n_stations, views = _load_telescope_config(telescope_cfg)
     if len(n_stations) < n_boards or len(views) < n_boards:
         raise ValueError(
@@ -1408,8 +1398,10 @@ def _process_batch_run(
     adc_file_str: str,
     color: str,
     pedestal_folders_by_run: dict[int, Path],
+    reconstructed_base_dir: Path,
     raw_base: Path,
-    tracks_base: Path,
+    spiroc_mapping_file: Path,
+    telescope_config_file: Path,
     overwrite_outputs: bool,
     write_root: bool,
     progress_every: int,
@@ -1425,9 +1417,8 @@ def _process_batch_run(
             f"No pedestal outputs found for run {run} in the provided pedestal batch file"
         )
 
-    reconstructed_dirname = str(config["paths"]["reconstructed_dirname"])
     slow_control_prefix = str(config["paths"]["slow_control_prefix"])
-    reconstructed_path = adc_file.parents[3] / reconstructed_dirname / adc_file.parents[1].name / adc_file.parent.name
+    reconstructed_path = reconstructed_base_dir
     analysis_jsonl = reconstructed_path / f"MURAVES_AnalyzedData_run{run}.jsonl"
     analyzed_root = reconstructed_path / f"MURAVES_AnalyzedData_run{run}.root"
     primary_output = analyzed_root if write_root else analysis_jsonl
@@ -1445,7 +1436,8 @@ def _process_batch_run(
         pedestal_folder=pedestal_folder,
         reconstructed_path=reconstructed_path,
         slow_control_file=raw_base / color / f"{slow_control_prefix}{run}",
-        tracks_base=tracks_base,
+        spiroc_mapping_file=spiroc_mapping_file,
+        telescope_config_file=telescope_config_file,
         write_root=write_root,
         progress_every=progress_every,
         cluster_smearing_seed=cluster_smearing_seed,
@@ -1491,7 +1483,7 @@ def parse_args(config_defaults: dict | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--raw-base",
         type=Path,
-        default=_resolve_default_raw_base(config_defaults),
+        required=True,
         help="Base RAW folder that contains <COLOR>/SLOWCONTROL_run<run>",
     )
     parser.add_argument(
@@ -1499,6 +1491,18 @@ def parse_args(config_defaults: dict | None = None) -> argparse.Namespace:
         type=Path,
         default=Path(__file__).resolve().parent.parent,
         help="tracks_reconstruction base path (contains AncillaryFiles)",
+    )
+    parser.add_argument(
+        "--spiroc-mapping-file",
+        type=Path,
+        required=True,
+        help="Path to SPiROC strip-channel mapping file.",
+    )
+    parser.add_argument(
+        "--telescope-config-file",
+        type=Path,
+        required=True,
+        help="Path to telescope board configuration file for the selected color.",
     )
     parser.add_argument(
         "--config",
@@ -1597,8 +1601,10 @@ def main() -> None:
         _process_batch_run,
         color=color,
         pedestal_folders_by_run=pedestal_folders_by_run,
+        reconstructed_base_dir=args.output_filename.parent,
         raw_base=args.raw_base,
-        tracks_base=args.tracks_base,
+        spiroc_mapping_file=args.spiroc_mapping_file,
+        telescope_config_file=args.telescope_config_file,
         overwrite_outputs=overwrite_outputs,
         write_root=args.write_root,
         progress_every=args.progress_every,
