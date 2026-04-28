@@ -18,6 +18,7 @@ SPIROC_MAPPING_FILE = EXEC_CFG.get('spiroc_mapping_file', 'muraves_cfg_files/spi
 TELESCOPE_CFG_TEMPLATE = EXEC_CFG.get('telescope_cfg_template', 'muraves_cfg_files/telescope{color}.cfg')
 SELECTED_RECO_CONFIG = RECO_OVERRIDE_FILE if RECO_OVERRIDE_FILE else RECO_PARAMETERS_FILE
 CLUSTER_SMEARING_SEED = config.get('cluster_smearing_seed', None)
+SLOW_CONTROL_PREFIX = config.get('slow_control_prefix', 'SLOWCONTROL_run')
 if config['run']:
     runs = snakefile_helper.parse_runs(config['run'])  # convert config file format into list of runs.
     BATCHES = list(snakefile_helper.batch_runs(runs, BATCH_SIZE))  # # create batches: [[2500,2501,2502], [2503,2504,2505], ...]
@@ -119,6 +120,7 @@ rule analyse:
         raw_base = f'{PNFS}/RAW_GZ',
         tracks_base = '.',
         reco_config_file = SELECTED_RECO_CONFIG,
+        slow_control_prefix = SLOW_CONTROL_PREFIX,
         cluster_smearing_seed_arg = (
             f'--cluster-smearing-seed {CLUSTER_SMEARING_SEED}'
             if CLUSTER_SMEARING_SEED is not None
@@ -131,6 +133,7 @@ rule analyse:
         "-o {output.output_filename} "
         "--raw-base {params.raw_base} "
         "--tracks-base {params.tracks_base} "
+        "--slow-control-prefix {params.slow_control_prefix} "
         "--spiroc-mapping-file {input.spiroc_mapping} "
         "--telescope-config-file {input.telescope_cfg} "
         "--base-config {input.reco_parameters} "

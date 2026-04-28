@@ -14,7 +14,7 @@ from ReadEvent import ReadEvent
 from Tracking import MakeTracks
 from reco_config import get_reco_config, resolve_first_existing, set_runtime_config_path
 
-from muraves_lib import file_handler
+from muraves_lib import file_handler, root_wrapper
 from multiprocessing import Pool
 from functools import partial
 import argparse as argp
@@ -196,6 +196,8 @@ def write_root_outputs(
     analysis_jsonl: Path,
     mini_summary_json: Path,
     output_dir: Path | None = None,
+    config_files: list[Path] | None = None,
+    reco_config_file: Path | None = None,
 ) -> tuple[Path, Path]:
     """Write ROOT TTrees from JSON outputs while preserving jagged event content."""
     import importlib
@@ -214,6 +216,7 @@ def write_root_outputs(
     analysis_jsonl = Path(analysis_jsonl)
     mini_summary_json = Path(mini_summary_json)
 
+    _root_export_t0 = time.time()
     print(f"[progress] ROOT export started for {analysis_jsonl.name}", flush=True)
 
     if not analysis_jsonl.exists():
@@ -238,6 +241,9 @@ def write_root_outputs(
                 ) from exc
             if line_idx % 50000 == 0:
                 print(f"[progress] ROOT export parsed {line_idx} JSON lines", flush=True)
+
+    _t_json_read = time.time()
+    print(f"[progress] ROOT export: JSON read in {_t_json_read - _root_export_t0:.2f} s ({len(event_records)} events)", flush=True)
 
     run = int(summary.get("Run", 0))
     export_dir = Path(output_dir) if output_dir is not None else analysis_jsonl.parent
@@ -352,6 +358,9 @@ def write_root_outputs(
             flush=True,
         )
 
+    _t_arrays = time.time()
+    print(f"[progress] ROOT export: array building in {_t_arrays - _t_json_read:.2f} s", flush=True)
+
     analyzed_root = export_dir / f"MURAVES_AnalyzedData_run{run}.root"
     run_info_root = export_dir / f"MURAVES_miniRunTree_run{run}.root"
 
@@ -360,13 +369,32 @@ def write_root_outputs(
         tree = root_file.mktree("AnalyzedData", analyzed_payload)
         #tree.extend(analyzed_payload)
 
+    _t_analyzed_written = time.time()
+    print(f"[progress] ROOT export: AnalyzedData written in {_t_analyzed_written - _t_arrays:.2f} s", flush=True)
+
     with uproot.recreate(run_info_root) as root_file:
         # Same pattern for run-level tree.
         tree = root_file.mktree("Run_info", run_info_payload)
         #tree.extend(run_info_payload)
 
+    _t_runinfo_written = time.time()
+    print(f"[progress] ROOT export: Run_info written in {_t_runinfo_written - _t_analyzed_written:.2f} s", flush=True)
+
+    if config_files:
+        all_config_files = list(config_files)
+        if reco_config_file is not None:
+            all_config_files.append(reco_config_file)
+        # Build git + config metadata once and reuse for the second ROOT file
+        # to avoid running git subprocess calls and SHA256 twice.
+        meta = root_wrapper.add_metadata_to_root(analyzed_root, all_config_files)
+        root_wrapper.add_metadata_to_root(run_info_root, all_config_files, prebuilt_metadata=meta)
+        _t_meta = time.time()
+        print(f"[progress] ROOT export: metadata written in {_t_meta - _t_runinfo_written:.2f} s", flush=True)
+
+    _t_end = time.time()
     print(
-        f"[progress] ROOT export completed: {analyzed_root.name}, {run_info_root.name}",
+        f"[progress] ROOT export completed in {_t_end - _root_export_t0:.2f} s total: "
+        f"{analyzed_root.name}, {run_info_root.name}",
         flush=True,
     )
 
@@ -386,6 +414,7 @@ def run_reconstruction(
     progress_every: int = 1000,
     cluster_smearing_seed: int | None = None,
     config: dict | None = None,
+    reco_config_file: Path | None = None,
 ) -> tuple[Path, Path]:
     """Run full event reconstruction for one run and emit JSON (and optional ROOT)."""
     print(" ~~~~~~~  Welcome to the MURAVES reconstruction (Python) ~~~~~~~~")
@@ -1314,6 +1343,8 @@ def run_reconstruction(
         analyzed_root, run_info_root = write_root_outputs(
             analysis_jsonl=analysis_jsonl,
             mini_summary_json=mini_summary_json,
+            config_files=[spiroc_cfg, telescope_cfg],
+            reco_config_file=reco_config_file,
         )
         root_fill_elapsed = max(0.0, time.time() - root_start_wall_time)
 
@@ -1402,11 +1433,13 @@ def _process_batch_run(
     raw_base: Path,
     spiroc_mapping_file: Path,
     telescope_config_file: Path,
+    slow_control_prefix: str,
     overwrite_outputs: bool,
     write_root: bool,
     progress_every: int,
     cluster_smearing_seed: int | None,
     config: dict,
+    reco_config_file: Path | None = None,
 ) -> tuple[Path, int]:
     adc_file = Path(adc_file_str)
     run = _extract_run_number(adc_file)
@@ -1417,7 +1450,6 @@ def _process_batch_run(
             f"No pedestal outputs found for run {run} in the provided pedestal batch file"
         )
 
-    slow_control_prefix = str(config["paths"]["slow_control_prefix"])
     reconstructed_path = reconstructed_base_dir
     analysis_jsonl = reconstructed_path / f"MURAVES_AnalyzedData_run{run}.jsonl"
     analyzed_root = reconstructed_path / f"MURAVES_AnalyzedData_run{run}.root"
@@ -1442,6 +1474,7 @@ def _process_batch_run(
         progress_every=progress_every,
         cluster_smearing_seed=cluster_smearing_seed,
         config=config,
+        reco_config_file=reco_config_file,
     )
     return primary_output, run
 
@@ -1528,6 +1561,13 @@ def parse_args(config_defaults: dict | None = None) -> argparse.Namespace:
         help="Print progress every N events within each run (set 0 to disable).",
     )
     parser.add_argument(
+        "--slow-control-prefix",
+        dest="slow_control_prefix",
+        type=str,
+        default="SLOWCONTROL_run",
+        help="Filename prefix for slow-control files inside <raw-base>/<color>/. Default: SLOWCONTROL_run",
+    )
+    parser.add_argument(
         "--cluster-smearing-seed",
         type=int,
         default=None,
@@ -1605,11 +1645,13 @@ def main() -> None:
         raw_base=args.raw_base,
         spiroc_mapping_file=args.spiroc_mapping_file,
         telescope_config_file=args.telescope_config_file,
+        slow_control_prefix=args.slow_control_prefix,
         overwrite_outputs=overwrite_outputs,
         write_root=args.write_root,
         progress_every=args.progress_every,
         cluster_smearing_seed=args.cluster_smearing_seed,
         config=config,
+        reco_config_file=args.base_config or args.config,
     )
 
     with Pool(args.num_threads) as pool:
