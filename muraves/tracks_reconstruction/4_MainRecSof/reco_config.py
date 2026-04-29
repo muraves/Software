@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import json
 import os
 from copy import deepcopy
@@ -42,11 +43,16 @@ def set_runtime_config_path(
     else:
         os.environ[RUNTIME_BASE_CONFIG_ENV] = str(Path(base_config_path).expanduser().resolve())
 
+    # Clear the cache when config paths change
+    _load_reco_config_cached.cache_clear()
 
-def get_reco_config(
-    config_path: Path | str | None = None,
-    base_config_path: Path | str | None = None,
+
+@functools.lru_cache(maxsize=1)
+def _load_reco_config_cached(
+    config_path: str | None,
+    base_config_path: str | None,
 ) -> dict[str, Any]:
+    """Internal cached version of config loading. Paths must be strings for hashability."""
     base_candidate: Path | None
     if base_config_path is not None:
         base_candidate = Path(base_config_path).expanduser().resolve()
@@ -87,6 +93,22 @@ def get_reco_config(
 
     override = _load_json(candidate)
     return _deep_merge(base, override)
+
+
+def get_reco_config(
+    config_path: Path | str | None = None,
+    base_config_path: Path | str | None = None,
+) -> dict[str, Any]:
+    """Load reconstruction configuration with caching.
+    
+    Configuration is cached after first load to avoid repeated file I/O.
+    Call set_runtime_config_path() with new paths to invalidate the cache.
+    """
+    # Convert to strings for hashability in lru_cache
+    config_str = str(Path(config_path).expanduser().resolve()) if config_path else None
+    base_str = str(Path(base_config_path).expanduser().resolve()) if base_config_path else None
+    
+    return _load_reco_config_cached(config_str, base_str)
 
 
 def resolve_first_existing(paths: list[str]) -> Path:
