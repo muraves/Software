@@ -23,11 +23,11 @@ def _safe_float(value: str, default: float = 0.0) -> float:
         return default
 
 
-def ReadEvent(ADCline: str, stripIndices: Sequence[int]) -> EventStruct:
+def ReadEvent(ADCline: str, stripIndices: Sequence[int], events_cfg: dict | None = None,) -> EventStruct:
     """Python port of ReadEvent from ReadEvent.cc."""
     adcdata_splitted = ADCline.rstrip("\n").split("\t")
 
-    cfg = get_reco_config()["read_event"]
+    cfg = events_cfg if events_cfg is not None else get_reco_config()["read_event"]
     n_info_board = int(cfg["n_info_board"])
     n_channels = int(cfg["n_channels"])
     n_boards = int(cfg["n_boards"])

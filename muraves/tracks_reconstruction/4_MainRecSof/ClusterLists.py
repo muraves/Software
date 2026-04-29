@@ -69,6 +69,7 @@ def CreateClusterList(
     TriggerMask1: Sequence[float],
     TriggerMask2: Sequence[float],
     smearing_rng: DeterministicSmearingRNG | None = None,
+    cluster_cfg: dict | None = None,
 ) -> ClusterCollection:
     """
     Python port of CreateClusterList from ClusterLists.cc.
@@ -76,7 +77,8 @@ def CreateClusterList(
     The implementation intentionally mirrors the C++ logic, including cluster
     ordering by energy and the single-strip random position smearing.
     """
-    cfg = get_reco_config()["cluster_lists"]
+
+    cfg = cluster_cfg if cluster_cfg is not None else get_reco_config()["cluster_lists"]
     max_strip_energy = float(cfg["max_strip_energy"])
     first_strip_pos = float(cfg["first_strip_pos"])
     adjacent_strips_distance = float(cfg["adjacent_strips_distance"])
