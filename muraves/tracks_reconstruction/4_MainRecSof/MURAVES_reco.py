@@ -6,6 +6,7 @@ import math
 import time
 from pathlib import Path
 from typing import Sequence
+import numpy as np
 
 from SearchFileName import Search_File
 from ClusterLists import CreateClusterList, DeterministicSmearingRNG
@@ -489,6 +490,26 @@ def run_reconstruction(
         pedestal_folder, n_boards, sorted_channels
     )
 
+    # Build fixed-size NumPy views once; reused for every event in the run.
+    boards_peds_np: list[np.ndarray] = []
+    boards_onephes_np: list[np.ndarray] = []
+    for board_n in range(n_boards):
+        peds_board = boards_peds[board_n] if board_n < len(boards_peds) else []
+        onephe_board = boards_onephes[board_n] if board_n < len(boards_onephes) else []
+
+        peds_np = np.zeros(n_channels, dtype=np.float64)
+        onephes_np = np.ones(n_channels, dtype=np.float64)
+
+        if peds_board:
+            peds_len = min(n_channels, len(peds_board))
+            peds_np[:peds_len] = peds_board[:peds_len]
+        if onephe_board:
+            onephe_len = min(n_channels, len(onephe_board))
+            onephes_np[:onephe_len] = onephe_board[:onephe_len]
+
+        boards_peds_np.append(peds_np)
+        boards_onephes_np.append(onephes_np)
+
     telescope_cfg = Path(telescope_config_file)
     n_stations, views = _load_telescope_config(telescope_cfg)
     if len(n_stations) < n_boards or len(views) < n_boards:
@@ -601,8 +622,8 @@ def run_reconstruction(
                 n_station = n_stations[b]
 
                 adc_counts = event_info.boards[b] if b < len(event_info.boards) else []
-                peds_board = boards_peds[b] if b < len(boards_peds) else []
-                onephe_board = boards_onephes[b] if b < len(boards_onephes) else []
+                peds_board_np = boards_peds_np[b] if b < len(boards_peds_np) else np.zeros(n_channels, dtype=np.float64)
+                onephe_board_np = boards_onephes_np[b] if b < len(boards_onephes_np) else np.ones(n_channels, dtype=np.float64)
 
                 time_exp_value = event_info.timeExp[b] if b < len(event_info.timeExp) else 0.0
 
@@ -643,53 +664,56 @@ def run_reconstruction(
                     if view == "y2":
                         texp_4y2 = time_exp_value
 
-                for adc_ch in range(n_channels):
-                    adc_count = adc_counts[adc_ch] if adc_ch < len(adc_counts) else 0.0
-                    ped = peds_board[adc_ch] if adc_ch < len(peds_board) else 0.0
-                    onephe = onephe_board[adc_ch] if adc_ch < len(onephe_board) else 1.0
+                adc_np = np.zeros(n_channels, dtype=np.float64)
+                if adc_counts:
+                    adc_len = min(n_channels, len(adc_counts))
+                    adc_np[:adc_len] = adc_counts[:adc_len]
 
-                    if onephe == 0:
-                        deposit = 0.0
-                    else:
-                        # Convert ADC counts to photoelectron-equivalent deposit.
-                        deposit = (adc_count - ped) / onephe
+                # Convert ADC counts to photoelectron-equivalent deposits in one vectorized step.
+                deposits_np = np.divide(
+                    adc_np - peds_board_np,
+                    onephe_board_np,
+                    out=np.zeros_like(adc_np),
+                    where=onephe_board_np != 0.0,
+                )
+                deposits_board = deposits_np.tolist()
 
-                    if n_station == 1:
-                        if view == "x1":
-                            deposits_p1x1.append(deposit)
-                        if view == "x2":
-                            deposits_p1x2.append(deposit)
-                        if view == "y1":
-                            deposits_p1y1.append(deposit)
-                        if view == "y2":
-                            deposits_p1y2.append(deposit)
-                    if n_station == 2:
-                        if view == "x1":
-                            deposits_p2x1.append(deposit)
-                        if view == "x2":
-                            deposits_p2x2.append(deposit)
-                        if view == "y1":
-                            deposits_p2y1.append(deposit)
-                        if view == "y2":
-                            deposits_p2y2.append(deposit)
-                    if n_station == 3:
-                        if view == "x1":
-                            deposits_p3x1.append(deposit)
-                        if view == "x2":
-                            deposits_p3x2.append(deposit)
-                        if view == "y1":
-                            deposits_p3y1.append(deposit)
-                        if view == "y2":
-                            deposits_p3y2.append(deposit)
-                    if n_station == 4:
-                        if view == "x1":
-                            deposits_p4x1.append(deposit)
-                        if view == "x2":
-                            deposits_p4x2.append(deposit)
-                        if view == "y1":
-                            deposits_p4y1.append(deposit)
-                        if view == "y2":
-                            deposits_p4y2.append(deposit)
+                if n_station == 1:
+                    if view == "x1":
+                        deposits_p1x1.extend(deposits_board)
+                    if view == "x2":
+                        deposits_p1x2.extend(deposits_board)
+                    if view == "y1":
+                        deposits_p1y1.extend(deposits_board)
+                    if view == "y2":
+                        deposits_p1y2.extend(deposits_board)
+                if n_station == 2:
+                    if view == "x1":
+                        deposits_p2x1.extend(deposits_board)
+                    if view == "x2":
+                        deposits_p2x2.extend(deposits_board)
+                    if view == "y1":
+                        deposits_p2y1.extend(deposits_board)
+                    if view == "y2":
+                        deposits_p2y2.extend(deposits_board)
+                if n_station == 3:
+                    if view == "x1":
+                        deposits_p3x1.extend(deposits_board)
+                    if view == "x2":
+                        deposits_p3x2.extend(deposits_board)
+                    if view == "y1":
+                        deposits_p3y1.extend(deposits_board)
+                    if view == "y2":
+                        deposits_p3y2.extend(deposits_board)
+                if n_station == 4:
+                    if view == "x1":
+                        deposits_p4x1.extend(deposits_board)
+                    if view == "x2":
+                        deposits_p4x2.extend(deposits_board)
+                    if view == "y1":
+                        deposits_p4y1.extend(deposits_board)
+                    if view == "y2":
+                        deposits_p4y2.extend(deposits_board)
 
             # Concatenate sub-plane energy deposits to form a full plane deposit. 
             deposits_p1x = deposits_p1x1 + deposits_p1x2
