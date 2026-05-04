@@ -28,8 +28,7 @@ def FillVector(input_file, nBoards):
     start_time = time.time()
     with uproot.open(input_file) as f:
         tree = f[f.keys()[0]]
-    
-    df = tree.arrays(library="pd")
+        df = tree.arrays(library="pd")
 
     # Prepare output structure
     boardALL = [[] for _ in range(nBoards)]
