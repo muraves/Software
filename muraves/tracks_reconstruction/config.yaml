@@ -46,7 +46,7 @@ run:
 logs_on_console: False #(True/False)
 verbose: info # (debug/info/warning/error/critical)
 overwrite_outputs: True # (True/False) if True, existing output files will be overwritten. If False, existing output files will be kept and the corresponding runs will be skipped.
-
+cluster_smearing_seed: 50
 #-----------execution configuration files-----------------
 execution_config:
   reco_parameters_file: "muraves_cfg_files/reco_parameters.json"
