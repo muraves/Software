@@ -6,6 +6,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 
+import time
+import re
+import numpy as np
+import pandas as pd
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import os
+
+
 DEFAULT_RUN_DIR = "/user/abiolchi/muraves_outputs/RECONSTRUCTED/NERO/v0"
 DEFAULT_RUN_PATTERN = "MURAVES_AnalyzedData_run{run}.root"
 DEFAULT_ROOT_FILE = f"{DEFAULT_RUN_DIR}/{DEFAULT_RUN_PATTERN.format(run=2500)}"
@@ -64,8 +73,8 @@ FEATURES_LABEL = {
     # --- Best-track chi-square (3-plane fit) ---
     "BestTrack_3p_ChiSquare_xy": "Best chi2 3p XY",
     "BestTrack_3p_ChiSquare_xz": "Best chi2 3p XZ",
-    "BestChi_xy": "Best chi2 XY",
-    "BestChi_xz": "Best chi2 XZ",
+    #"BestChi_xy": "Best chi2 XY", # with the filtering of tracks with 3 plane info do not add anything that is not already in the 3p chi2
+    #"BestChi_xz": "Best chi2 XZ", # with the filtering of tracks with 3 plane info do not add anything that is not already in the 3p chi2
     # --- Best-track chi-square (4-plane fit) ---
     #"BestTrack_4p_ChiSquare_xy": "Best chi2 4p XY",
     #"BestTrack_4p_ChiSquare_xz": "Best chi2 4p XZ",
@@ -237,37 +246,156 @@ def build_unused_dataframe(
     return unused_df, labels
 
 
-def load_root_to_dataframe(file_path: str) -> pd.DataFrame:
-    """Load the first tree of a ROOT file into a pandas DataFrame."""
+def load_root_to_dataframe(file_path: str, branches=None) -> pd.DataFrame:
+    """Load the first tree of a ROOT file into a pandas DataFrame.
+    If branches is given (list/set), only those branches are read from ROOT.
+    Branches absent from the tree are silently skipped.
+    """
     with uproot.open(file_path) as f:
         tree = f[f.keys()[0]]
-        df = tree.arrays(library="pd")
+        if branches is not None:
+            available = set(tree.keys())
+            to_read = [b for b in branches if b in available]
+        else:
+            to_read = None
+        df = tree.arrays(to_read, library="pd")
     return df
 
 
-def load_multiple_root_files(file_paths: list) -> pd.DataFrame:
+
+def _process_single_file(args: tuple) -> tuple[int, pd.DataFrame, int, int]:
     """
-    Load one or more ROOT files and concatenate into a single DataFrame.
-    When multiple files are provided, a 'run' column (int) is added whose value
-    is extracted from the filename pattern 'run<N>', or falls back to the list index.
+    Worker function eseguita in un processo separato.
+    Ritorna (idx, df_processed, n_raw, n_kept).
+    NOTA: tutte le dipendenze (VECTOR_AGGREGATIONS, etc.) devono essere
+    importabili nel sottoprocesso.
+    """
+    idx, path, branches, filter_fn, multi = args
+
+    df = load_root_to_dataframe(path, branches=branches)
+    n_raw = len(df)
+
+    if filter_fn is not None:
+        df = filter_fn(df)
+
+    df = compute_vector_aggregations(df)
+
+    # Drop ALL remaining jagged-array (non-scalar) columns so that
+    # pd.concat / _fast_concat only operates on 1-D arrays.
+    cols_to_drop = [col for col in df.columns if not is_scalar_series(df[col])]
+    if cols_to_drop:
+        df = df.drop(columns=cols_to_drop)
+
+    if multi:
+        m = re.search(r'run(\d+)', Path(path).stem)
+        df["run"] = int(m.group(1)) if m else idx
+
+    return idx, df, n_raw, len(df)
+
+def load_multiple_root_files(
+    file_paths: list,
+    filter_fn=None,
+    branches=None,
+    max_workers: int | None = None,
+    parallel: bool = True,
+) -> pd.DataFrame:
+    """
+    Carica uno o più ROOT file e li concatena in un singolo DataFrame.
+
+    Ottimizzazioni rispetto alla versione originale:
+    - Caricamento parallelo dei file (ThreadPoolExecutor).
+    - Concatenazione colonna per colonna con dtype unificato,
+      evitando la degradazione a object array.
+    - np.concatenate invece di np.vstack (meno allocazioni intermedie).
+
+    Parameters
+    ----------
+    file_paths  : lista di path ai file ROOT.
+    filter_fn   : funzione opzionale df -> df applicata dopo il caricamento.
+    branches    : lista opzionale di branch da leggere.
+    max_workers : numero di thread paralleli (default: min(N_files, cpu_count)).
+    parallel    : se False, forza l'esecuzione sequenziale (utile per debug).
     """
     multi = len(file_paths) > 1
-    dfs = []
-    for idx, path in enumerate(file_paths):
-        print(f"  Loading: {path}")
-        df_single = load_root_to_dataframe(path)
-        if multi:
-            m = re.search(r'run(\d+)', Path(path).stem)
-            df_single["run"] = int(m.group(1)) if m else idx
-            tag = f"  (run {df_single['run'].iloc[0]})"
-        else:
-            tag = ""
-        dfs.append(df_single)
-        print(f"    → {len(df_single)} events{tag}")
-    result = pd.concat(dfs, ignore_index=True)
-    if multi:
-        print(f"Total events after concatenation: {len(result)}")
+    t_start = time.perf_counter()
+
+    # ------------------------------------------------------------------
+    # 1. Caricamento (parallelo o sequenziale)
+    # ------------------------------------------------------------------
+    args_list = [
+        (idx, path, branches, filter_fn, multi)
+        for idx, path in enumerate(file_paths)
+    ]
+
+    results: dict[int, pd.DataFrame] = {}
+
+    if parallel and len(file_paths) > 1:
+        n_workers = max_workers or min(len(file_paths), 4)  # Limitiamo a 4 thread per evitare overload su HDD
+        print(f"Caricamento parallelo: {len(file_paths)} file, {n_workers} worker(s)...", flush=True)
+        with ThreadPoolExecutor(max_workers=n_workers) as executor:
+            futures = {
+                executor.submit(_process_single_file, args): args[0]
+                for args in args_list
+            }
+            for future in as_completed(futures):
+                idx, df, n_raw, n_kept = future.result()
+                path = file_paths[idx]
+                tag = f"  (run {df['run'].iloc[0]})" if multi and "run" in df.columns else ""
+                if filter_fn is not None:
+                    print(f"  [{idx}] {Path(path).name}: {n_kept}/{n_raw} eventi{tag}", flush=True)
+                else:
+                    print(f"  [{idx}] {Path(path).name}: {n_raw} eventi{tag}", flush=True)
+                results[idx] = df
+    else:
+        # Sequenziale (debug o file singolo)
+        for args in args_list:
+            idx, df, n_raw, n_kept = _process_single_file(args)
+            path = file_paths[idx]
+            tag = f"  (run {df['run'].iloc[0]})" if multi and "run" in df.columns else ""
+            label = f"{n_kept}/{n_raw}" if filter_fn is not None else str(n_raw)
+            print(f"  {Path(path).name}: {label} eventi{tag}", flush=True)
+            results[idx] = df
+
+    # Riordina per indice originale (as_completed non garantisce l'ordine)
+    dfs = [results[i] for i in range(len(file_paths))]
+
+    # ------------------------------------------------------------------
+    # 2. Concatenazione ottimizzata
+    # ------------------------------------------------------------------
+    print(f"Concatenazione di {len(dfs)} DataFrame...", flush=True)
+    t0 = time.perf_counter()
+
+    result = _fast_concat(dfs)
+
+    dt = time.perf_counter() - t0
+    t_total = time.perf_counter() - t_start
+
+    print(
+        f"  Eventi totali: {len(result):,}  "
+        f"(concat: {dt:.3f}s | totale: {t_total:.2f}s)",
+        flush=True,
+    )
     return result
+
+
+def _fast_concat(dfs: list[pd.DataFrame]) -> pd.DataFrame:
+    """Concatenazione colonna per colonna con dtype unificato."""
+    if not dfs:
+        return pd.DataFrame()
+    if len(dfs) == 1:
+        return dfs[0].reset_index(drop=True)
+
+    columns = dfs[0].columns.tolist()
+    unified: dict[str, np.ndarray] = {}
+
+    for col in columns:
+        arrays = [df[col].to_numpy() for df in dfs]
+        common_dtype = np.result_type(*[a.dtype for a in arrays])
+        unified[col] = np.concatenate(
+            [a.astype(common_dtype, copy=False) for a in arrays]
+        )
+
+    return pd.DataFrame(unified, copy=False)
 
 
 def is_scalar_series(series: pd.Series) -> bool:
@@ -362,7 +490,7 @@ def compute_vector_aggregations(df: pd.DataFrame) -> pd.DataFrame:
             new_cols[new_col] = series.apply(lambda v: _agg_series(v, func))
     if new_cols:
         df = pd.concat([df, pd.DataFrame(new_cols, index=df.index)], axis=1)
-        print(f"  Computed {len(new_cols)} aggregated features from vector branches.")
+        print(f"  Computed {len(new_cols)} aggregated features from vector branches.", flush=True)
     return df
 
 
@@ -529,11 +657,113 @@ def plot_cluster_profile_heatmap(
     print(f"Saved: {fname}")
 
 
+def plot_delta_t_global(
+    timestamps: np.ndarray,
+    out_dir: Path,
+    run_labels: np.ndarray | None = None,
+) -> None:
+    """
+    Plot the inter-event time (ΔT) distribution for ALL events together,
+    before any clustering. An exponential fit (Poisson-process reference)
+    is overlaid. Inter-run transitions are masked when run_labels is provided.
+
+    Saves three PDFs: delta_t_global.pdf, delta_t_global_counts.pdf,
+    delta_t_global_log.pdf.
+    """
+    from scipy.stats import expon, chi2 as chi2_dist
+
+    order = np.argsort(timestamps)
+    ts_sorted = timestamps[order]
+    delta_t = np.diff(ts_sorted)
+
+    if run_labels is not None:
+        run_sorted = run_labels[order]
+        same_run = run_sorted[:-1] == run_sorted[1:]
+        n_masked = int((~same_run).sum())
+        if n_masked:
+            print(f"  ΔT global: masked {n_masked} inter-run transitions.")
+        delta_t = delta_t[same_run]
+
+    delta_t = delta_t[delta_t > 0]
+    if delta_t.size < 10:
+        print("  Not enough ΔT values for global plot, skipping.")
+        return
+
+    # MLE exponential fit
+    _, scale = expon.fit(delta_t, floc=0)
+    lam = 1.0 / scale
+
+    # Chi-squared goodness-of-fit
+    n_bins = min(50, max(10, delta_t.size // 30))
+    bin_edges_lin = np.linspace(0, np.percentile(delta_t, 99), n_bins + 1)
+    observed, _ = np.histogram(delta_t, bins=bin_edges_lin)
+    expected = np.diff(expon.cdf(bin_edges_lin, loc=0, scale=scale)) * delta_t.size
+    valid = expected >= 5
+    if valid.sum() > 1:
+        chi2_val = float(np.sum((observed[valid] - expected[valid])**2 / expected[valid]))
+        dof = int(valid.sum()) - 1
+        pval = float(1.0 - chi2_dist.cdf(chi2_val, dof))
+    else:
+        chi2_val, dof, pval = np.nan, 0, np.nan
+
+    chi2_str = (f"χ²/dof = {chi2_val:.1f}/{dof},  p = {pval:.3f}"
+                if np.isfinite(chi2_val) else "χ² n/a")
+    annot = f"λ = {lam:.3g} s⁻¹,  ⟨ΔT⟩ = {scale:.3g} s\n{chi2_str}"
+    color = "#4C72B0"
+
+    def _draw(ax, log_x: bool, density: bool) -> None:
+        lo = np.log10(delta_t.min())
+        hi = np.log10(delta_t.max())
+        if log_x:
+            bins = np.logspace(lo, hi, 60)
+            x_fit = np.logspace(lo, hi, 400)
+        else:
+            p99 = np.percentile(delta_t, 99)
+            bins = np.linspace(0, p99, 60)
+            x_fit = np.linspace(0, p99, 400)
+        ax.hist(delta_t, bins=bins, density=density, alpha=0.5,
+                color=color, histtype="stepfilled", linewidth=0.5,
+                label=f"All events (n={delta_t.size:,})")
+        y_fit = expon.pdf(x_fit, loc=0, scale=scale)
+        if not density:
+            y_fit = y_fit * delta_t.size * np.diff(bins).mean()
+        ax.plot(x_fit, y_fit, color=color, linewidth=2.0, linestyle="--",
+                alpha=0.95, label="Exponential fit")
+        ax.annotate(annot, xy=(0.02, 0.95), xycoords="axes fraction",
+                    fontsize=8.5, color=color, verticalalignment="top",
+                    bbox=dict(boxstyle="round,pad=0.25", fc="white",
+                              ec=color, alpha=0.75))
+
+    for log_x, density, suffix in [
+        (False, True,  ""),
+        (False, False, "_counts"),
+        (True,  True,  "_log"),
+    ]:
+        fig, ax = plt.subplots(figsize=(8, 5))
+        _draw(ax, log_x, density)
+        if log_x:
+            ax.set_xscale("log")
+        ax.set_xlabel(
+            "ΔT between consecutive events (s)" + (" [log scale]" if log_x else ""),
+            fontsize=10)
+        ax.set_ylabel("Density" if density else "Counts", fontsize=10)
+        ax.set_title("Inter-event time distribution — all events", fontsize=11)
+        ax.legend(fontsize=9, frameon=False)
+        ax.grid(True, linestyle="--", alpha=0.3,
+                which="both" if log_x else "major")
+        fig.tight_layout()
+        fname = out_dir / f"delta_t_global{suffix}.pdf"
+        fig.savefig(fname)
+        plt.close(fig)
+        print(f"Saved: {fname}")
+
+
 def plot_delta_t_by_cluster(
     timestamps: np.ndarray,
     labels: np.ndarray,
     algorithm: str,
     out_dir: Path,
+    run_labels: np.ndarray | None = None,
 ) -> None:
     """
     Plot the inter-event time (ΔT = t[i+1] - t[i]) distribution per cluster.
@@ -541,12 +771,16 @@ def plot_delta_t_by_cluster(
     An exponential fit (Poisson-process reference) is overlaid with fit parameters
     and chi-squared goodness-of-fit annotated on the plot.
 
+    If `run_labels` is provided, ΔT values that span two different runs are
+    discarded before fitting and plotting (avoids spurious large gaps caused
+    by the run-level timestamp offset or simply by hours/days between runs).
+
     Saves two PDFs:
       - delta_t_<algorithm>.pdf          (linear x-axis)
       - delta_t_log_<algorithm>.pdf      (log x-axis — easier to see tail structure)
 
     Note: the absolute value of `timestamp` may carry a run-level offset (known
-    firmware bug), but *differences* between events are reliable.
+    firmware bug), but *differences* between events within the same run are reliable.
     """
     from scipy.stats import expon, chi2 as chi2_dist
 
@@ -556,6 +790,16 @@ def plot_delta_t_by_cluster(
 
     delta_t = np.diff(ts_sorted)       # ΔT[i] = t[i+1] - t[i]
     lbl_dt = lbl_sorted[1:]            # assign ΔT to the cluster of the arriving event
+
+    # Remove inter-run transitions to avoid spurious large ΔT values.
+    if run_labels is not None:
+        run_sorted = run_labels[order]
+        same_run = run_sorted[:-1] == run_sorted[1:]
+        n_masked = int((~same_run).sum())
+        if n_masked:
+            print(f"  ΔT: masked {n_masked} inter-run transitions ({n_masked} ΔT values removed).")
+        delta_t = delta_t[same_run]
+        lbl_dt  = lbl_dt[same_run]
 
     unique_labels = np.unique(labels)
     cmap = plt.get_cmap("tab10")
@@ -699,6 +943,8 @@ def run_kmeans(
     unused_df: pd.DataFrame = None,
     unused_labels: dict = None,
     timestamps: np.ndarray = None,
+    run_labels: np.ndarray = None,
+    model_selection: bool = True,
 ) -> None:
     from sklearn.cluster import KMeans
     km = KMeans(n_clusters=k, random_state=42, n_init=10)
@@ -725,7 +971,45 @@ def run_kmeans(
             tag, out_dir, top_n=len(unused_cols), prefix="unused_feature_distributions"
         )
     if timestamps is not None:
-        plot_delta_t_by_cluster(timestamps, km_labels, tag, out_dir)
+        plot_delta_t_by_cluster(timestamps, km_labels, tag, out_dir, run_labels=run_labels)
+
+    if not model_selection:
+        return
+
+    # --- Elbow + silhouette plot for k=1..10 ---
+    from sklearn.metrics import silhouette_score
+    k_range_km = range(1, 11)
+    inertias, silhouettes = [], []
+    print("  K-Means model selection (k=1..10)...", flush=True)
+    for k_try in k_range_km:
+        km_try = KMeans(n_clusters=k_try, random_state=42, n_init=10)
+        km_try.fit(X)
+        inertias.append(km_try.inertia_)
+        if k_try >= 2:
+            silhouettes.append(silhouette_score(X, km_try.labels_))
+        else:
+            silhouettes.append(np.nan)
+
+    fig, ax1 = plt.subplots(figsize=(7, 4))
+    ax2 = ax1.twinx()
+    ax1.plot(list(k_range_km), inertias, "o-", color="#4C72B0", label="Inertia (elbow)")
+    ax2.plot(list(k_range_km), silhouettes, "s--", color="#C44E52", label="Silhouette")
+    ax1.axvline(k, color="gray", linestyle=":", linewidth=1, label=f"current k={k}")
+    ax1.set_xlabel("Number of clusters")
+    ax1.set_ylabel("Inertia", color="#4C72B0")
+    ax2.set_ylabel("Silhouette score", color="#C44E52")
+    ax1.tick_params(axis="y", labelcolor="#4C72B0")
+    ax2.tick_params(axis="y", labelcolor="#C44E52")
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, frameon=False, fontsize=8)
+    ax1.set_title("K-Means model selection (elbow + silhouette)")
+    ax1.grid(True, linestyle="--", alpha=0.3)
+    fig.tight_layout()
+    fname_km = out_dir / "KMeans_elbow_silhouette.pdf"
+    fig.savefig(fname_km)
+    plt.close(fig)
+    print(f"Saved: {fname_km}")
 
 
 def run_dbscan(
@@ -747,6 +1031,7 @@ def run_dbscan(
     unused_df: pd.DataFrame = None,
     unused_labels: dict = None,
     timestamps: np.ndarray = None,
+    run_labels: np.ndarray = None,
 ) -> None:
     from sklearn.cluster import DBSCAN
     plot_knn_distances(X, k=knn_k if knn_k is not None else min_samples, out_dir=out_dir, eps=eps)
@@ -776,7 +1061,7 @@ def run_dbscan(
             tag, out_dir, top_n=len(unused_cols), prefix="unused_feature_distributions"
         )
     if timestamps is not None:
-        plot_delta_t_by_cluster(timestamps, db_labels, tag, out_dir)
+        plot_delta_t_by_cluster(timestamps, db_labels, tag, out_dir, run_labels=run_labels)
 
 
 def run_gmm(
@@ -797,6 +1082,8 @@ def run_gmm(
     unused_df: pd.DataFrame = None,
     unused_labels: dict = None,
     timestamps: np.ndarray = None,
+    run_labels: np.ndarray = None,
+    model_selection: bool = True,
 ) -> None:
     """
     Gaussian Mixture Model clustering.
@@ -833,8 +1120,10 @@ def run_gmm(
             tag, out_dir, top_n=len(unused_cols), prefix="unused_feature_distributions"
         )
     if timestamps is not None:
-        plot_delta_t_by_cluster(timestamps, gmm_labels, tag, out_dir)
-    k_range = range(1, min(n_components + 4, 11))
+        plot_delta_t_by_cluster(timestamps, gmm_labels, tag, out_dir, run_labels=run_labels)
+    if not model_selection:
+        return
+    k_range = range(1, 11)
     bics, aics = [], []
     for k in k_range:
         g = GaussianMixture(n_components=k, covariance_type=covariance_type,
@@ -972,6 +1261,105 @@ def plot_clusters(
 
     fname = out_dir / f"PCA_clusters_{algorithm}.pdf"
     fig.savefig(fname)
+    plt.close(fig)
+    print(f"Saved: {fname}")
+
+
+def plot_feature_importance(pca, features: list, feature_labels: dict, out_dir: Path) -> None:
+    """
+    Variance-weighted importance across all PCs:
+        I_i = sum_k  EVR_k * w_ik^2
+    Gives a single ranking of which features drive the most total variance.
+    """
+    evr = pca.explained_variance_ratio_          # (n_components,)
+    loadings = pca.components_                   # (n_components, n_features)
+    importance = (evr[:, None] * loadings ** 2).sum(axis=0)  # (n_features,)
+
+    labels = [feature_labels.get(f, f) for f in features]
+    imp_series = pd.Series(importance, index=labels).sort_values(ascending=True)
+
+    median_val = imp_series.median()
+    colors = ["#4C72B0" if v >= median_val else "#aec7e8" for v in imp_series]
+
+    fig_h = max(5, 0.28 * len(imp_series) + 1)
+    fig, ax = plt.subplots(figsize=(8, fig_h))
+    bars = ax.barh(imp_series.index, imp_series.values, color=colors, height=0.7)
+
+    # Annotate values
+    x_max = imp_series.max()
+    for bar, val in zip(bars, imp_series.values):
+        ax.text(val + 0.001 * x_max, bar.get_y() + bar.get_height() / 2,
+                f"{val:.4f}", va="center", ha="left", fontsize=7)
+
+    ax.set_xlabel(r"Variance-weighted importance  $\sum_k\, \mathrm{EVR}_k \cdot w_{ik}^2$",
+                  fontsize=10)
+    ax.set_title("PCA feature importance (all components)", fontsize=11)
+    ax.set_xlim(0, x_max * 1.18)
+    ax.tick_params(labelsize=8)
+    ax.grid(True, linestyle="--", alpha=0.3, axis="x")
+    fig.tight_layout()
+    fname = out_dir / "PCA_feature_importance.pdf"
+    fig.savefig(fname)
+    plt.close(fig)
+    print(f"Saved: {fname}")
+
+
+def plot_pc_pair_hexbins(
+    pca_df: pd.DataFrame,
+    n_components: int,
+    out_dir: Path,
+    gridsize: int = 50,
+) -> None:
+    """
+    Lower-triangular matrix of 2-D density hexbin plots for all PC pairs.
+    Panel [row, col] (0-indexed, col <= row) shows PC(col+1) on x
+    and PC(row+2) on y  —  i.e. the same layout as a pairs-plot lower half.
+    For n PCs there are n*(n-1)/2 panels.
+    Skipped if n_components < 2.
+    """
+    from matplotlib.colors import LogNorm
+
+    n = n_components
+    if n < 2:
+        return
+
+    size = n - 1          # grid is (n-1) x (n-1)
+    cell = 3.2
+    fig, axes = plt.subplots(size, size,
+                             figsize=(cell * size, cell * size),
+                             squeeze=False)
+
+    pcs = [f"PC{i+1}" for i in range(n)]
+
+    for row in range(size):       # y-axis: pcs[row+1]
+        for col in range(size):   # x-axis: pcs[col]
+            ax = axes[row][col]
+            if col > row:         # upper triangle → hide
+                ax.set_visible(False)
+                continue
+
+            pc_x = pcs[col]
+            pc_y = pcs[row + 1]
+            x = pca_df[pc_x].values
+            y = pca_df[pc_y].values
+
+            ax.hexbin(x, y, gridsize=gridsize, cmap="plasma",
+                      norm=LogNorm(vmin=1), mincnt=1, linewidths=0)
+
+            if row == size - 1:
+                ax.set_xlabel(pc_x, fontsize=9)
+            else:
+                ax.set_xticklabels([])
+            if col == 0:
+                ax.set_ylabel(pc_y, fontsize=9)
+            else:
+                ax.set_yticklabels([])
+            ax.tick_params(labelsize=7)
+
+    fig.suptitle("PC pair density (all combinations)", fontsize=11, y=1.01)
+    fig.tight_layout()
+    fname = out_dir / "PCA_density_pairs.pdf"
+    fig.savefig(fname, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved: {fname}")
 
@@ -1119,15 +1507,6 @@ if __name__ == "__main__":
              "and add them to the PCA feature set.",
     )
     parser.add_argument(
-        "--plot-extra-features",
-        action="store_true",
-        dest="plot_extra_features",
-        help="After clustering, plot per-cluster distributions of aggregated vector "
-             "features (mean/max/rms of cluster sizes, energies, track residuals) "
-             "even when --aggregate-vectors is not active. Useful to check whether "
-             "a cluster corresponds to events without a reconstructed track.",
-    )
-    parser.add_argument(
         "--plot-unused-features",
         action="store_true",
         dest="plot_unused_features",
@@ -1147,22 +1526,11 @@ if __name__ == "__main__":
              "bug), but differences between events are reliable.",
     )
     parser.add_argument(
-        "--track-events-only",
+        "--no-model-selection",
         action="store_true",
-        dest="track_events_only",
-        help="Keep only events where a best 3p-track was reconstructed "
-             "(Theta_3p != -1, ~29 999 events). "
-             "Output saved in 'track_events_only/' subdirectory.",
-    )
-    parser.add_argument(
-        "--four-plane-only",
-        action="store_true",
-        dest="four_plane_only",
-        help="Keep only events where a best 4p-track was reconstructed "
-             "(Theta_4p != -1, ~1 084 events). "
-             "These events have hits on all 4 planes. "
-             "Output saved in 'four_plane_only/' subdirectory. "
-             "Can be combined with --track-events-only (applies both filters).",
+        dest="no_model_selection",
+        help="Skip the model-selection plots (K-Means elbow/silhouette and GMM BIC/AIC). "
+             "Useful when k is already known and the scan over k=1..10 is too slow.",
     )
     args = parser.parse_args()
 
@@ -1185,17 +1553,44 @@ if __name__ == "__main__":
     seen: set = set()
     file_paths = [p for p in file_paths if not (p in seen or seen.add(p))]
 
-    print(f"Loading {len(file_paths)} file(s)...")
-    df = load_multiple_root_files(file_paths)
-    print(f"Events loaded: {len(df)}")
+    # Always keep only events with a reconstructed 4-plane track
+    # (Theta_3p != -1 AND Theta_4p != -1).  Applied per-file immediately
+    # after loading so only the selected rows are concatenated.
+    def filter_fn(df_f):
+        n_in = len(df_f)
+        if "Theta_3p" in df_f.columns:
+            df_f = df_f[df_f["Theta_3p"] != -1]
+        if "Theta_4p" in df_f.columns:
+            df_f = df_f[df_f["Theta_4p"] != -1]
+        return df_f
 
-    # Optionally compute aggregations from vector branches
-    if args.aggregate_vectors:
-        print("Computing vector aggregations...")
-        df = compute_vector_aggregations(df)
+    # Determine which branches to load from ROOT to avoid reading large unused
+    # jagged-array columns (speeds up pd.concat significantly).
+    # If --plot-unused-features is active we need everything, so load all.
+    if args.plot_unused_features:
+        needed_branches = None  # load all
+    else:
+        needed_branches = set(FEATURES_LABEL.keys())
+        # Vector source branches are needed for aggregations and extras plots
+        needed_branches |= {branch for branch, _ in VECTOR_AGGREGATIONS.values()}
+        if args.plot_delta_t:
+            needed_branches.add("timestamp")
 
-    # Keep only branches listed in FEATURES_LABEL that are actually scalar
-    candidate_features = [col for col in df.columns if col in FEATURES_LABEL]
+    print(f"Loading {len(file_paths)} file(s)...", flush=True)
+    print("Event selection: 3-plane track (Theta_3p != -1) AND 4-plane track (Theta_4p != -1).", flush=True)
+    df = load_multiple_root_files(file_paths, filter_fn=filter_fn, branches=needed_branches)
+    print(f"Events passing selection: {len(df)}", flush=True)
+
+    # Vector branches were already aggregated and dropped per-file during loading.
+    # Keep only branches listed in FEATURES_LABEL that are actually scalar.
+    # Aggregated features (VECTOR_AGGREGATIONS keys) enter PCA only when
+    # --aggregate-vectors is active; they are always present in df for extras plots.
+    _all_agg_keys = set(VECTOR_AGGREGATIONS.keys())
+    candidate_features = [
+        col for col in df.columns
+        if col in FEATURES_LABEL
+        and (args.aggregate_vectors or col not in _all_agg_keys)
+    ]
     FEATURES = [
         col for col in candidate_features
         if pd.api.types.is_numeric_dtype(df[col]) and is_scalar_series(df[col])
@@ -1225,40 +1620,6 @@ if __name__ == "__main__":
     n_dropped = len(df) - len(df_clean)
     if n_dropped:
         print(f"Dropped {n_dropped} events with NaN in original scalar features.")
-
-    # --track-events-only: keep only events where a best 3p-track was reconstructed.
-    # The sentinel value for "no track" is -1 in Theta_3p (and BestTrack_3p_ChiSquare_*).
-    if args.track_events_only:
-        if "Theta_3p" not in df_clean.columns:
-            raise ValueError(
-                "--track-events-only requires Theta_3p to be present in the feature set "
-                "(check FEATURES_LABEL)."
-            )
-        has_track = df_clean["Theta_3p"] != -1
-        n_before = len(df_clean)
-        df_clean = df_clean[has_track]
-        print(f"Track-events-only filter: kept {len(df_clean)}/{n_before} events "
-              f"with a reconstructed 3p-track (Theta_3p != -1).")
-        out_dir = out_dir / "track_events_only"
-        out_dir.mkdir(parents=True, exist_ok=True)
-        print(f"Output redirected to: {out_dir}")
-
-    # --four-plane-only: keep only events where a best 4p-track was reconstructed,
-    # i.e. hits on all 4 planes. Sentinel for "no 4p-track" is -1 in Theta_4p.
-    if args.four_plane_only:
-        if "Theta_4p" not in df_clean.columns:
-            raise ValueError(
-                "--four-plane-only requires Theta_4p to be present in the feature set "
-                "(check FEATURES_LABEL)."
-            )
-        has_4p = df_clean["Theta_4p"] != -1
-        n_before = len(df_clean)
-        df_clean = df_clean[has_4p]
-        print(f"Four-plane filter: kept {len(df_clean)}/{n_before} events "
-              f"with a reconstructed 4p-track (Theta_4p != -1).")
-        out_dir = out_dir / "four_plane_only"
-        out_dir.mkdir(parents=True, exist_ok=True)
-        print(f"Output redirected to: {out_dir}")
 
     from pca_mapper import PCAMapper
 
@@ -1294,6 +1655,9 @@ if __name__ == "__main__":
     plt.close(fig)
     print(f"Saved: {out_dir / 'PCA_density_hexbin.pdf'}")
 
+    # --- PC pair density matrix (lower-triangular hexbin for all PC pairs) ---
+    plot_pc_pair_hexbins(pca_mapper.pca_df, args.n_components, out_dir)
+
     # --- Component loadings ---
     for pc in [f"PC{i+1}" for i in range(args.n_components)]:
         fig, _ = pca_mapper.plot_pca_component_loadings(
@@ -1304,6 +1668,23 @@ if __name__ == "__main__":
         )
         plt.close(fig)
         print(f"Saved: {out_dir / f'PCA_{pc}_loadings.pdf'}")
+
+    # --- Variance-weighted feature importance ---
+    plot_feature_importance(pca_mapper.pca, FEATURES, FEATURES_LABEL, out_dir)
+
+    # --- Global ΔT plot (all events, before clustering) ---
+    timestamps = None
+    run_labels_dt = None
+    if args.plot_delta_t:
+        if "timestamp" in df.columns:
+            timestamps = df.loc[df_clean.index, "timestamp"].values
+            run_labels_dt = df.loc[df_clean.index, "run"].values if "run" in df.columns else None
+            n_runs_str = (f", {len(np.unique(run_labels_dt))} run(s) — inter-run ΔT masked"
+                          if run_labels_dt is not None else "")
+            print(f"Timestamps loaded ({len(timestamps)} events{n_runs_str}).")
+            plot_delta_t_global(timestamps, out_dir, run_labels=run_labels_dt)
+        else:
+            print("Warning: 'timestamp' branch not found — --plot-delta-t will be skipped.")
 
     # --- Optional clustering ---
     if args.clustering:
@@ -1321,27 +1702,11 @@ if __name__ == "__main__":
         print(f"\nClustering on first {N_CLUSTER_PCS} PCs...")
 
         # Build extras_df: aggregated vector features on the same events used for PCA.
-        # NaN (= no track/cluster) is filled with 0 so every event has a value.
-        # We must draw from the original `df` (all branches), filtered to df_clean's index.
-        extras_df = None
-        extra_labels = None
-        if args.plot_extra_features:
-            print("Computing extra aggregated features for post-clustering analysis...")
-            df_for_extras = df.loc[df_clean.index].copy()
-            extras_raw = compute_vector_aggregations(df_for_extras)
-            extra_cols = list(VECTOR_AGGREGATIONS.keys())
-            extras_df = extras_raw[extra_cols].fillna(0).reset_index(drop=True)
-            extra_labels = {k: k.replace("_", " ") for k in extra_cols}
-
-        # Build timestamps array for ΔT analysis.
-        timestamps = None
-        if args.plot_delta_t:
-            if "timestamp" in df.columns:
-                timestamps = df.loc[df_clean.index, "timestamp"].values
-                print(f"Timestamps loaded for ΔT analysis ({len(timestamps)} events).")
-            else:
-                print("Warning: 'timestamp' branch not found in ROOT file — "
-                      "--plot-delta-t will be skipped.")
+        # Aggregations were computed per-file during loading and are already in df.
+        extra_cols = [c for c in VECTOR_AGGREGATIONS.keys() if c in df.columns]
+        extras_df = df.loc[df_clean.index, extra_cols].fillna(0).reset_index(drop=True)
+        extra_labels = {k: k.replace("_", " ") for k in extra_cols}
+        print(f"Extra aggregated features for clustering plots: {len(extra_cols)}", flush=True)
 
         # Build unused_df: all branches not used in PCA, computed dynamically.
         unused_df = None
@@ -1374,6 +1739,8 @@ if __name__ == "__main__":
                 unused_df=unused_df,
                 unused_labels=unused_labels,
                 timestamps=timestamps,
+                run_labels=run_labels_dt,
+                model_selection=not args.no_model_selection,
             )
 
         if "dbscan" in args.clustering:
@@ -1394,6 +1761,7 @@ if __name__ == "__main__":
                 unused_df=unused_df,
                 unused_labels=unused_labels,
                 timestamps=timestamps,
+                run_labels=run_labels_dt,
             )
 
         if "gmm" in args.clustering:
@@ -1413,6 +1781,8 @@ if __name__ == "__main__":
                 unused_df=unused_df,
                 unused_labels=unused_labels,
                 timestamps=timestamps,
+                run_labels=run_labels_dt,
+                model_selection=not args.no_model_selection,
             )
 
     print("Done.")
