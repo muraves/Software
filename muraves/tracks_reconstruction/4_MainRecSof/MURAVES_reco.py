@@ -6,14 +6,16 @@ import math
 import time
 from pathlib import Path
 from typing import Sequence
+import numpy as np
 
 from SearchFileName import Search_File
 from ClusterLists import CreateClusterList, DeterministicSmearingRNG
 from Evaluate_Angular_Coordinates import TrackAngularCoordinates
 from ReadEvent import ReadEvent
 from Tracking import MakeTracks
+from reco_config import get_reco_config, resolve_first_existing, set_runtime_config_path
 
-from muraves_lib import file_handler
+from muraves_lib import file_handler, root_wrapper
 from multiprocessing import Pool
 from functools import partial
 import argparse as argp
@@ -30,7 +32,9 @@ def _mean_rms(values: Sequence[float]) -> tuple[float, float]:
     return mean, rms
 
 
-def _read_slow_control(slow_control_path: Path, run: int) -> tuple[float, float, float]:
+def _read_slow_control(
+    slow_control_path: Path, run: int, config: dict
+) -> tuple[float, float, float]:
     trigger_rate = 0.0
     temperature = 0.0
     working_point = 0.0
@@ -38,28 +42,36 @@ def _read_slow_control(slow_control_path: Path, run: int) -> tuple[float, float,
     if not slow_control_path.exists():
         return trigger_rate, temperature, working_point
 
+    slow_control_cfg = config["slow_control"]
+    delimiter = str(slow_control_cfg["delimiter"])
+    minimum_fields = int(slow_control_cfg["minimum_fields"])
+    run_index = int(slow_control_cfg["run_index"])
+    trigger_rate_index = int(slow_control_cfg["trigger_rate_index"])
+    temperature_index = int(slow_control_cfg["temperature_index"])
+    working_point_index = int(slow_control_cfg["working_point_index"])
+
     with slow_control_path.open("r", encoding="utf-8", errors="ignore") as handle:
         for raw_line in handle:
-            fields = raw_line.rstrip("\n").split("\t")
-            if len(fields) < 44:
+            fields = raw_line.rstrip("\n").split(delimiter)
+            if len(fields) < minimum_fields:
                 continue
 
             try:
-                sc_run = int(float(fields[0]))
+                sc_run = int(float(fields[run_index]))
             except ValueError:
                 continue
 
             if sc_run == run:
                 try:
-                    trigger_rate = float(fields[43])
+                    trigger_rate = float(fields[trigger_rate_index])
                 except ValueError:
                     trigger_rate = 0.0
                 try:
-                    temperature = float(fields[3])
+                    temperature = float(fields[temperature_index])
                 except ValueError:
                     temperature = 0.0
                 try:
-                    working_point = float(fields[5])
+                    working_point = float(fields[working_point_index])
                 except ValueError:
                     working_point = 0.0
                 break
@@ -181,24 +193,12 @@ def _safe_get(container: Sequence[Sequence[float]], idx: int) -> Sequence[float]
     return container[idx] if 0 <= idx < len(container) else []
 
 
-def _resolve_default_output_base() -> Path:
-    workspace_base = Path("/workspace/muraves_outputs")
-    if workspace_base.exists():
-        return workspace_base
-    return Path("/user/abiolchi/muraves_outputs")
-
-
-def _resolve_default_raw_base() -> Path:
-    data_base = Path("/data/RAW_GZ")
-    if data_base.exists():
-        return data_base
-    return Path("/user/abiolchi/data/RAW_GZ")
-
-
 def write_root_outputs(
     analysis_jsonl: Path,
     mini_summary_json: Path,
     output_dir: Path | None = None,
+    config_files: list[Path] | None = None,
+    reco_config_file: Path | None = None,
 ) -> tuple[Path, Path]:
     """Write ROOT TTrees from JSON outputs while preserving jagged event content."""
     import importlib
@@ -217,6 +217,7 @@ def write_root_outputs(
     analysis_jsonl = Path(analysis_jsonl)
     mini_summary_json = Path(mini_summary_json)
 
+    _root_export_t0 = time.time()
     print(f"[progress] ROOT export started for {analysis_jsonl.name}", flush=True)
 
     if not analysis_jsonl.exists():
@@ -241,6 +242,9 @@ def write_root_outputs(
                 ) from exc
             if line_idx % 50000 == 0:
                 print(f"[progress] ROOT export parsed {line_idx} JSON lines", flush=True)
+
+    _t_json_read = time.time()
+    print(f"[progress] ROOT export: JSON read in {_t_json_read - _root_export_t0:.2f} s ({len(event_records)} events)", flush=True)
 
     run = int(summary.get("Run", 0))
     export_dir = Path(output_dir) if output_dir is not None else analysis_jsonl.parent
@@ -355,6 +359,9 @@ def write_root_outputs(
             flush=True,
         )
 
+    _t_arrays = time.time()
+    print(f"[progress] ROOT export: array building in {_t_arrays - _t_json_read:.2f} s", flush=True)
+
     analyzed_root = export_dir / f"MURAVES_AnalyzedData_run{run}.root"
     run_info_root = export_dir / f"MURAVES_miniRunTree_run{run}.root"
 
@@ -363,13 +370,32 @@ def write_root_outputs(
         tree = root_file.mktree("AnalyzedData", analyzed_payload)
         #tree.extend(analyzed_payload)
 
+    _t_analyzed_written = time.time()
+    print(f"[progress] ROOT export: AnalyzedData written in {_t_analyzed_written - _t_arrays:.2f} s", flush=True)
+
     with uproot.recreate(run_info_root) as root_file:
         # Same pattern for run-level tree.
         tree = root_file.mktree("Run_info", run_info_payload)
         #tree.extend(run_info_payload)
 
+    _t_runinfo_written = time.time()
+    print(f"[progress] ROOT export: Run_info written in {_t_runinfo_written - _t_analyzed_written:.2f} s", flush=True)
+
+    if config_files:
+        all_config_files = list(config_files)
+        if reco_config_file is not None:
+            all_config_files.append(reco_config_file)
+        # Build git + config metadata once and reuse for the second ROOT file
+        # to avoid running git subprocess calls and SHA256 twice.
+        meta = root_wrapper.add_metadata_to_root(analyzed_root, all_config_files)
+        root_wrapper.add_metadata_to_root(run_info_root, all_config_files, prebuilt_metadata=meta)
+        _t_meta = time.time()
+        print(f"[progress] ROOT export: metadata written in {_t_meta - _t_runinfo_written:.2f} s", flush=True)
+
+    _t_end = time.time()
     print(
-        f"[progress] ROOT export completed: {analyzed_root.name}, {run_info_root.name}",
+        f"[progress] ROOT export completed in {_t_end - _root_export_t0:.2f} s total: "
+        f"{analyzed_root.name}, {run_info_root.name}",
         flush=True,
     )
 
@@ -383,53 +409,59 @@ def run_reconstruction(
     pedestal_folder: Path,
     reconstructed_path: Path,
     slow_control_file: Path,
-    tracks_base: Path,
+    spiroc_mapping_file: Path,
+    telescope_config_file: Path,
     write_root: bool = False,
     progress_every: int = 1000,
     cluster_smearing_seed: int | None = None,
+    config: dict | None = None,
+    reco_config_file: Path | None = None,
 ) -> tuple[Path, Path]:
     """Run full event reconstruction for one run and emit JSON (and optional ROOT)."""
     print(" ~~~~~~~  Welcome to the MURAVES reconstruction (Python) ~~~~~~~~")
     total_start_wall_time = time.time()
     json_event_output_elapsed = 0.0
 
-    # Geometry
-    if color == "ROSSO":
-        z_add = [0.292, 0.251, 0.207, 0.0]
-        x_pos = [-0.265, 0.0, 0.262, 1.475]
-    elif color == "NERO":
-        z_add = [0.293, 0.251, 0.210, 0.0]
-        x_pos = [-0.26, 0.0, 0.262, 1.492]
-    elif color == "BLU":
-        z_add = [0.2712, 0.2312, 0.1892, 0.0]
-        x_pos = [-0.26, 0.0, 0.262, 1.492]
-    else:
-        raise ValueError(f"Unsupported detector color: {color}")
+    cfg = config or get_reco_config()
+    geometry_cfg = cfg["detector_geometry"]
+    reco_cfg = cfg["reconstruction"]
 
-    y_add = [0.0, 0.0, 0.0]
+    # Geometry
+    if color not in geometry_cfg:
+        raise ValueError(f"Unsupported detector color: {color}")
+    z_add = [float(v) for v in geometry_cfg[color]["z_add"]]
+    x_pos = [float(v) for v in geometry_cfg[color]["x_pos"]]
+
+    y_add = [float(v) for v in reco_cfg["y_add"]]
 
     # SPACIAL RESOLUTION PARAMETERS (C++ values: sigma_z=0.0040, sigma_y=0.0035)
-    sigma_z = 0.0040
-    sigma_y = 0.0035
+    sigma_z = float(reco_cfg["sigma_z"])
+    sigma_y = float(reco_cfg["sigma_y"])
 
     # CLUSTERING PARAMETERS (C++ values: s1=6, s2=10, s3=2)
-    s1 = 6.0 # cluster strips must have at least this energy to be seed
-    s2 = 10.0 # single strip clusters must have at least this energy to be accepted as 1-strip cluster
-    s3 = 2.0 # adiacent strips must have at least this energy to be merged into cluster
+    cluster_cfg = reco_cfg["cluster_thresholds"]
+    s1 = float(cluster_cfg["s1"]) # cluster strips must have at least this energy to be seed
+    s2 = float(cluster_cfg["s2"]) # single strip clusters must have at least this energy to be accepted as 1-strip cluster
+    s3 = float(cluster_cfg["s3"]) # adiacent strips must have at least this energy to be merged into cluster
 
     # TRACKING PARAMETERS
     # C++ code uses 5*sigma_z and 5*sigma_y as proximity cuts for track building, we keep the same values here.
-    proximity_cut_xz = 5 * sigma_z # from C++ comment: "point-trackcandidate distance requirement"
-    proximity_cut_xy = 5 * sigma_y # from C++ comment: "point-trackcandidate distance requirement"
+    proximity_multiplier = float(reco_cfg["proximity_sigma_multiplier"])
+    proximity_cut_xz = proximity_multiplier * sigma_z # from C++ comment: "point-trackcandidate distance requirement"
+    proximity_cut_xy = proximity_multiplier * sigma_y # from C++ comment: "point-trackcandidate distance requirement"
 
     # CONSTANT PARAMETERS
-    n_boards = 16
-    n_channels = 32
+    n_boards = int(reco_cfg["n_boards"])
+    n_channels = int(reco_cfg["n_channels"])
+    cluster_lists_cfg = cfg["cluster_lists"]
+    read_events_cfg = cfg["read_event"]
+    tracking_cfg = cfg["tracking"]
     # additional parameter available in C++ but not used: 
     #const int nInfo = 168;
     #const int nChInfo = 5;
     #const double FirstStripPos = -0.528;
     #const double AdiacentStripsDistance = 0.0165;
+
 
     # PATHS
     reconstructed_path.mkdir(parents=True, exist_ok=True)
@@ -447,9 +479,9 @@ def run_reconstruction(
 
     print(f"[progress] Input ADC file: {adc_file}", flush=True)
 
-    trigger_rate, temperature, working_point = _read_slow_control(slow_control_file, run)
+    trigger_rate, temperature, working_point = _read_slow_control(slow_control_file, run, cfg)
 
-    spiroc_cfg = tracks_base / "AncillaryFiles" / "spiroc-hybrid-map.cfg"
+    spiroc_cfg = Path(spiroc_mapping_file)
     # The SPiROC mapping file defines the strip-to-channel mapping for each board, which is crucial for correctly interpreting the ADC data and applying pedestals. The C++ code relies on this mapping to reorder channels and access pedestals in the correct order, so we must load it before processing events.
     sorted_channels = _load_spiroc_mapping(spiroc_cfg)
 
@@ -458,7 +490,27 @@ def run_reconstruction(
         pedestal_folder, n_boards, sorted_channels
     )
 
-    telescope_cfg = tracks_base / "AncillaryFiles" / f"telescope{color}.cfg"
+    # Build fixed-size NumPy views once; reused for every event in the run.
+    boards_peds_np: list[np.ndarray] = []
+    boards_onephes_np: list[np.ndarray] = []
+    for board_n in range(n_boards):
+        peds_board = boards_peds[board_n] if board_n < len(boards_peds) else []
+        onephe_board = boards_onephes[board_n] if board_n < len(boards_onephes) else []
+
+        peds_np = np.zeros(n_channels, dtype=np.float64)
+        onephes_np = np.ones(n_channels, dtype=np.float64)
+
+        if peds_board:
+            peds_len = min(n_channels, len(peds_board))
+            peds_np[:peds_len] = peds_board[:peds_len]
+        if onephe_board:
+            onephe_len = min(n_channels, len(onephe_board))
+            onephes_np[:onephe_len] = onephe_board[:onephe_len]
+
+        boards_peds_np.append(peds_np)
+        boards_onephes_np.append(onephes_np)
+
+    telescope_cfg = Path(telescope_config_file)
     n_stations, views = _load_telescope_config(telescope_cfg)
     if len(n_stations) < n_boards or len(views) < n_boards:
         raise ValueError(
@@ -527,7 +579,7 @@ def run_reconstruction(
         for event in adc_handle:
             ev += 1
 
-            event_info = ReadEvent(event, sorted_channels)
+            event_info = ReadEvent(event, sorted_channels, events_cfg=read_events_cfg)
             timestamp = event_info.timeStamp
 
             if first_timestamp is None:
@@ -570,8 +622,8 @@ def run_reconstruction(
                 n_station = n_stations[b]
 
                 adc_counts = event_info.boards[b] if b < len(event_info.boards) else []
-                peds_board = boards_peds[b] if b < len(boards_peds) else []
-                onephe_board = boards_onephes[b] if b < len(boards_onephes) else []
+                peds_board_np = boards_peds_np[b] if b < len(boards_peds_np) else np.zeros(n_channels, dtype=np.float64)
+                onephe_board_np = boards_onephes_np[b] if b < len(boards_onephes_np) else np.ones(n_channels, dtype=np.float64)
 
                 time_exp_value = event_info.timeExp[b] if b < len(event_info.timeExp) else 0.0
 
@@ -612,53 +664,56 @@ def run_reconstruction(
                     if view == "y2":
                         texp_4y2 = time_exp_value
 
-                for adc_ch in range(n_channels):
-                    adc_count = adc_counts[adc_ch] if adc_ch < len(adc_counts) else 0.0
-                    ped = peds_board[adc_ch] if adc_ch < len(peds_board) else 0.0
-                    onephe = onephe_board[adc_ch] if adc_ch < len(onephe_board) else 1.0
+                adc_np = np.zeros(n_channels, dtype=np.float64)
+                if adc_counts:
+                    adc_len = min(n_channels, len(adc_counts))
+                    adc_np[:adc_len] = adc_counts[:adc_len]
 
-                    if onephe == 0:
-                        deposit = 0.0
-                    else:
-                        # Convert ADC counts to photoelectron-equivalent deposit.
-                        deposit = (adc_count - ped) / onephe
+                # Convert ADC counts to photoelectron-equivalent deposits in one vectorized step.
+                deposits_np = np.divide(
+                    adc_np - peds_board_np,
+                    onephe_board_np,
+                    out=np.zeros_like(adc_np),
+                    where=onephe_board_np != 0.0,
+                )
+                deposits_board = deposits_np.tolist()
 
-                    if n_station == 1:
-                        if view == "x1":
-                            deposits_p1x1.append(deposit)
-                        if view == "x2":
-                            deposits_p1x2.append(deposit)
-                        if view == "y1":
-                            deposits_p1y1.append(deposit)
-                        if view == "y2":
-                            deposits_p1y2.append(deposit)
-                    if n_station == 2:
-                        if view == "x1":
-                            deposits_p2x1.append(deposit)
-                        if view == "x2":
-                            deposits_p2x2.append(deposit)
-                        if view == "y1":
-                            deposits_p2y1.append(deposit)
-                        if view == "y2":
-                            deposits_p2y2.append(deposit)
-                    if n_station == 3:
-                        if view == "x1":
-                            deposits_p3x1.append(deposit)
-                        if view == "x2":
-                            deposits_p3x2.append(deposit)
-                        if view == "y1":
-                            deposits_p3y1.append(deposit)
-                        if view == "y2":
-                            deposits_p3y2.append(deposit)
-                    if n_station == 4:
-                        if view == "x1":
-                            deposits_p4x1.append(deposit)
-                        if view == "x2":
-                            deposits_p4x2.append(deposit)
-                        if view == "y1":
-                            deposits_p4y1.append(deposit)
-                        if view == "y2":
-                            deposits_p4y2.append(deposit)
+                if n_station == 1:
+                    if view == "x1":
+                        deposits_p1x1.extend(deposits_board)
+                    if view == "x2":
+                        deposits_p1x2.extend(deposits_board)
+                    if view == "y1":
+                        deposits_p1y1.extend(deposits_board)
+                    if view == "y2":
+                        deposits_p1y2.extend(deposits_board)
+                if n_station == 2:
+                    if view == "x1":
+                        deposits_p2x1.extend(deposits_board)
+                    if view == "x2":
+                        deposits_p2x2.extend(deposits_board)
+                    if view == "y1":
+                        deposits_p2y1.extend(deposits_board)
+                    if view == "y2":
+                        deposits_p2y2.extend(deposits_board)
+                if n_station == 3:
+                    if view == "x1":
+                        deposits_p3x1.extend(deposits_board)
+                    if view == "x2":
+                        deposits_p3x2.extend(deposits_board)
+                    if view == "y1":
+                        deposits_p3y1.extend(deposits_board)
+                    if view == "y2":
+                        deposits_p3y2.extend(deposits_board)
+                if n_station == 4:
+                    if view == "x1":
+                        deposits_p4x1.extend(deposits_board)
+                    if view == "x2":
+                        deposits_p4x2.extend(deposits_board)
+                    if view == "y1":
+                        deposits_p4y1.extend(deposits_board)
+                    if view == "y2":
+                        deposits_p4y2.extend(deposits_board)
 
             # Concatenate sub-plane energy deposits to form a full plane deposit. 
             deposits_p1x = deposits_p1x1 + deposits_p1x2
@@ -690,6 +745,7 @@ def run_reconstruction(
                 _safe_get(trigger_mask_strips, 0),
                 _safe_get(trigger_mask_strips, 1),
                 smearing_rng=smearing_rng,
+                cluster_cfg=cluster_lists_cfg,
             )
             results_p2x = CreateClusterList(
                 deposits_p2x,
@@ -702,6 +758,7 @@ def run_reconstruction(
                 _safe_get(trigger_mask_strips, 4),
                 _safe_get(trigger_mask_strips, 5),
                 smearing_rng=smearing_rng,
+                cluster_cfg=cluster_lists_cfg,
             )
             results_p3x = CreateClusterList(
                 deposits_p3x,
@@ -714,6 +771,7 @@ def run_reconstruction(
                 _safe_get(trigger_mask_strips, 8),
                 _safe_get(trigger_mask_strips, 9),
                 smearing_rng=smearing_rng,
+                cluster_cfg=cluster_lists_cfg,
             )
             results_p4x = CreateClusterList(
                 deposits_p4x,
@@ -726,6 +784,7 @@ def run_reconstruction(
                 _safe_get(trigger_mask_strips, 12),
                 _safe_get(trigger_mask_strips, 13),
                 smearing_rng=smearing_rng,
+                cluster_cfg=cluster_lists_cfg,
             )
 
             results_p1y = CreateClusterList(
@@ -739,6 +798,7 @@ def run_reconstruction(
                 _safe_get(trigger_mask_strips, 3),
                 _safe_get(trigger_mask_strips, 2),
                 smearing_rng=smearing_rng,
+                cluster_cfg=cluster_lists_cfg,
             )
             results_p2y = CreateClusterList(
                 deposits_p2y,
@@ -751,6 +811,7 @@ def run_reconstruction(
                 _safe_get(trigger_mask_strips, 7),
                 _safe_get(trigger_mask_strips, 6),
                 smearing_rng=smearing_rng,
+                cluster_cfg=cluster_lists_cfg,
             )
             results_p3y = CreateClusterList(
                 deposits_p3y,
@@ -763,6 +824,7 @@ def run_reconstruction(
                 _safe_get(trigger_mask_strips, 11),
                 _safe_get(trigger_mask_strips, 10),
                 smearing_rng=smearing_rng,
+                cluster_cfg=cluster_lists_cfg,
             )
             results_p4y = CreateClusterList(
                 deposits_p4y,
@@ -775,6 +837,7 @@ def run_reconstruction(
                 _safe_get(trigger_mask_strips, 15),
                 _safe_get(trigger_mask_strips, 14),
                 smearing_rng=smearing_rng,
+                cluster_cfg=cluster_lists_cfg,
             )
 
             nclusters_z1 = len(results_p1x.ClustersEnergy)
@@ -844,6 +907,7 @@ def run_reconstruction(
                 x_pos,
                 z_add,
                 sigma_z,
+                tracking_cfg=tracking_cfg
             )
             tracks_xy = MakeTracks(
                 results_p1y.ClustersPositions,
@@ -862,6 +926,7 @@ def run_reconstruction(
                 x_pos,
                 y_add,
                 sigma_y,
+                tracking_cfg=tracking_cfg
             )
 
             ntracks_3p_xz = len(tracks_xz.intercepts_3p)
@@ -1316,6 +1381,8 @@ def run_reconstruction(
         analyzed_root, run_info_root = write_root_outputs(
             analysis_jsonl=analysis_jsonl,
             mini_summary_json=mini_summary_json,
+            config_files=[spiroc_cfg, telescope_cfg],
+            reco_config_file=reco_config_file,
         )
         root_fill_elapsed = max(0.0, time.time() - root_start_wall_time)
 
@@ -1400,12 +1467,17 @@ def _process_batch_run(
     adc_file_str: str,
     color: str,
     pedestal_folders_by_run: dict[int, Path],
+    reconstructed_base_dir: Path,
     raw_base: Path,
-    tracks_base: Path,
+    spiroc_mapping_file: Path,
+    telescope_config_file: Path,
+    slow_control_prefix: str,
     overwrite_outputs: bool,
     write_root: bool,
     progress_every: int,
     cluster_smearing_seed: int | None,
+    config: dict,
+    reco_config_file: Path | None = None,
 ) -> tuple[Path, int]:
     adc_file = Path(adc_file_str)
     run = _extract_run_number(adc_file)
@@ -1416,7 +1488,7 @@ def _process_batch_run(
             f"No pedestal outputs found for run {run} in the provided pedestal batch file"
         )
 
-    reconstructed_path = adc_file.parents[3] / "RECONSTRUCTED" / adc_file.parents[1].name / adc_file.parent.name
+    reconstructed_path = reconstructed_base_dir
     analysis_jsonl = reconstructed_path / f"MURAVES_AnalyzedData_run{run}.jsonl"
     analyzed_root = reconstructed_path / f"MURAVES_AnalyzedData_run{run}.root"
     primary_output = analyzed_root if write_root else analysis_jsonl
@@ -1433,16 +1505,21 @@ def _process_batch_run(
         adc_file=adc_file,
         pedestal_folder=pedestal_folder,
         reconstructed_path=reconstructed_path,
-        slow_control_file=raw_base / color / f"SLOWCONTROL_run{run}",
-        tracks_base=tracks_base,
+        slow_control_file=raw_base / color / f"{slow_control_prefix}{run}",
+        spiroc_mapping_file=spiroc_mapping_file,
+        telescope_config_file=telescope_config_file,
         write_root=write_root,
         progress_every=progress_every,
         cluster_smearing_seed=cluster_smearing_seed,
+        config=config,
+        reco_config_file=reco_config_file,
     )
     return primary_output, run
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(config_defaults: dict | None = None) -> argparse.Namespace:
+    if config_defaults is None:
+        config_defaults = get_reco_config()
     parser = argparse.ArgumentParser(
         description=(
             "Batch MURAVES reconstruction entrypoint for Snakemake. "
@@ -1477,7 +1554,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--raw-base",
         type=Path,
-        default=_resolve_default_raw_base(),
+        required=True,
         help="Base RAW folder that contains <COLOR>/SLOWCONTROL_run<run>",
     )
     parser.add_argument(
@@ -1487,6 +1564,30 @@ def parse_args() -> argparse.Namespace:
         help="tracks_reconstruction base path (contains AncillaryFiles)",
     )
     parser.add_argument(
+        "--spiroc-mapping-file",
+        type=Path,
+        required=True,
+        help="Path to SPiROC strip-channel mapping file.",
+    )
+    parser.add_argument(
+        "--telescope-config-file",
+        type=Path,
+        required=True,
+        help="Path to telescope board configuration file for the selected color.",
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="Optional JSON override for reconstruction parameters.",
+    )
+    parser.add_argument(
+        "--base-config",
+        type=Path,
+        default=None,
+        help="Optional base JSON configuration for reconstruction parameters.",
+    )
+    parser.add_argument(
         "--write-root",
         action="store_true",
         help="Also export ROOT files from the generated JSON outputs.",
@@ -1494,8 +1595,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--progress-every",
         type=int,
-        default=1000,
+        default=int(config_defaults["reconstruction"]["progress_every_default"]),
         help="Print progress every N events within each run (set 0 to disable).",
+    )
+    parser.add_argument(
+        "--slow-control-prefix",
+        dest="slow_control_prefix",
+        type=str,
+        default="SLOWCONTROL_run",
+        help="Filename prefix for slow-control files inside <raw-base>/<color>/. Default: SLOWCONTROL_run",
     )
     parser.add_argument(
         "--cluster-smearing-seed",
@@ -1540,7 +1648,17 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    args = parse_args()
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument("--config", type=Path, default=None)
+    pre_parser.add_argument("--base-config", type=Path, default=None)
+    pre_args, _ = pre_parser.parse_known_args()
+
+    preloaded_config = get_reco_config(pre_args.config, pre_args.base_config)
+    args = parse_args(preloaded_config)
+
+    if args.config is not None or args.base_config is not None:
+        set_runtime_config_path(args.config, args.base_config)
+    config = get_reco_config(args.config, args.base_config)
     color = args.color.upper()
     overwrite_outputs = _parse_bool_flag(args.overwrite_outputs)
 
@@ -1561,12 +1679,17 @@ def main() -> None:
         _process_batch_run,
         color=color,
         pedestal_folders_by_run=pedestal_folders_by_run,
+        reconstructed_base_dir=args.output_filename.parent,
         raw_base=args.raw_base,
-        tracks_base=args.tracks_base,
+        spiroc_mapping_file=args.spiroc_mapping_file,
+        telescope_config_file=args.telescope_config_file,
+        slow_control_prefix=args.slow_control_prefix,
         overwrite_outputs=overwrite_outputs,
         write_root=args.write_root,
         progress_every=args.progress_every,
         cluster_smearing_seed=args.cluster_smearing_seed,
+        config=config,
+        reco_config_file=args.base_config or args.config,
     )
 
     with Pool(args.num_threads) as pool:
