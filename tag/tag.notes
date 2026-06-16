@@ -1,12 +1,23 @@
 ! Responsible : Alice Biolchini
 ! Purpose     : Tag the version of the workflow for MuRaVes trak reconstruction and run monitoring
 ! Legend      : `vX.n.k` (version), X changes when major modifications are made that require re-processing of data.
-!                                       *e.g.* Change algorithm, new/change clustering/tracking requirement, new/change chi2 selection, ...                          
+!                                       *e.g.* CHANGES THAT AFFECT OUTPUTS Change algorithm, new/change clustering/tracking requirement, new/change chi2 selection, ...
+!
 !                                   n changes for intermediate modifications; substantial updates, but output data remain compatible with previous version.
-!                                       *e.g.* Change of python pakage, update of snakemake version, necessity to update container or environment.
-!                                   k changes for small bug fixes or documentation updates.     
+!                                       *e.g* SUBSTANTIAL CHANGES THAT DO NOT AFFECT THE OUTPUTS, most of the releases fall here.
+!
+!                                   k changes for small bug fixes or documentation updates.   
+!                                        *e.g.* SMALL CHANGES THAT DO NOT AFFECT THE OUTPUTS: python pakage, update of snakemake version, necessity to update container or environment.
 ! Date        : yyyy-mm-dd           
 !-----------------------------------------------------------------------------
+
+!================ Workflow tag v0.4.0 2026-06-16 ==================================
+|Description:
+|  - Export hardcoded parameter into configuration files and reorganisation in https://github.com/muraves/Software/pull/9
+|  - Introduced pipeline for workflow validation at pull requests https://github.com/muraves/Software/pull/7
+|  - Logic fix in https://github.com/muraves/Software/pull/8
+|Release:
+| https://github.com/muraves/Software/releases/tag/v0.4.0
 
 !================ Workflow tag v0.3.0 2026-04-14 ==================================
 |Description:
