@@ -1467,6 +1467,7 @@ def _process_batch_run(
     adc_file_str: str,
     color: str,
     pedestal_folders_by_run: dict[int, Path],
+    fixed_pedestal_folder: Path | None,
     reconstructed_base_dir: Path,
     raw_base: Path,
     spiroc_mapping_file: Path,
@@ -1482,11 +1483,16 @@ def _process_batch_run(
     adc_file = Path(adc_file_str)
     run = _extract_run_number(adc_file)
 
-    pedestal_folder = pedestal_folders_by_run.get(run)
-    if pedestal_folder is None:
-        raise FileNotFoundError(
-            f"No pedestal outputs found for run {run} in the provided pedestal batch file"
-        )
+    # A telescope-level pedestal folder (produced by 3_PedAna/PedestalReader.py) applies to
+    # every run of that telescope, so it takes precedence over the per-run pedestal map.
+    if fixed_pedestal_folder is not None:
+        pedestal_folder = fixed_pedestal_folder
+    else:
+        pedestal_folder = pedestal_folders_by_run.get(run)
+        if pedestal_folder is None:
+            raise FileNotFoundError(
+                f"No pedestal outputs found for run {run} in the provided pedestal batch file"
+            )
 
     reconstructed_path = reconstructed_base_dir
     analysis_jsonl = reconstructed_path / f"MURAVES_AnalyzedData_run{run}.jsonl"
@@ -1540,8 +1546,18 @@ def parse_args(config_defaults: dict | None = None) -> argparse.Namespace:
         "--pedestal-input-filename",
         dest="pedestal_input_filename",
         type=Path,
-        required=True,
-        help="Batch stamp file listing pedestal outputs for the same runs.",
+        default=None,
+        help="Batch stamp file listing per-run pedestal outputs for the same runs. "
+             "Mutually exclusive with --pedestal-folder.",
+    )
+    parser.add_argument(
+        "--pedestal-folder",
+        dest="pedestal_folder",
+        type=Path,
+        default=None,
+        help="Single telescope-level pedestal folder (containing pedestal_N files) applied to "
+             "every run in the batch, as produced by 3_PedAna/PedestalReader.py. "
+             "Mutually exclusive with -p/--pedestal-input-filename.",
     )
     parser.add_argument(
         "-o",
@@ -1644,7 +1660,12 @@ def parse_args(config_defaults: dict | None = None) -> argparse.Namespace:
         default=1,
         help="Number of threads/cores to use for processing (default = 1)",
     )
-    return parser.parse_args()
+    parsed = parser.parse_args()
+    if (parsed.pedestal_input_filename is None) == (parsed.pedestal_folder is None):
+        parser.error(
+            "exactly one of -p/--pedestal-input-filename or --pedestal-folder is required"
+        )
+    return parsed
 
 
 def main() -> None:
@@ -1667,7 +1688,11 @@ def main() -> None:
     with args.input_filename.open("r", encoding="utf-8") as handle:
         adc_files = [line.strip() for line in handle if line.strip()]
 
-    pedestal_folders_by_run = _build_pedestal_folder_map(args.pedestal_input_filename)
+    if args.pedestal_folder is not None:
+        pedestal_folders_by_run: dict[int, Path] = {}
+        logger.info("Using telescope-level pedestal folder %s for all runs", args.pedestal_folder)
+    else:
+        pedestal_folders_by_run = _build_pedestal_folder_map(args.pedestal_input_filename)
 
     if not adc_files:
         with file_handler.temp_to_output(args.output_filename) as tmp:
@@ -1679,6 +1704,7 @@ def main() -> None:
         _process_batch_run,
         color=color,
         pedestal_folders_by_run=pedestal_folders_by_run,
+        fixed_pedestal_folder=args.pedestal_folder,
         reconstructed_base_dir=args.output_filename.parent,
         raw_base=args.raw_base,
         spiroc_mapping_file=args.spiroc_mapping_file,
