@@ -2,9 +2,46 @@ configfile: 'config.yaml'
 configfile: '../../tag/requirements.yaml'
 import os
 import multiprocessing
-from muraves_lib import snakefile_helper
+#from muraves_lib import snakefile_helper
 # IMPROVEMENTS:
 # The number of boards and channel should go in another configuration file
+# ******************** Funzioni helper  ********************
+#Function to convert runs of config file to list of runs
+def parse_runs(run_str):
+    runs = []
+    try:
+        for part in run_str.split(','):
+            part = part.strip()
+            if '-' in part:
+                start, end = map(int, part.split('-'))
+                runs.extend(range(start, end + 1))
+            else:
+                runs.append(int(part))
+        
+    except:
+        runs.append(run_str)
+    
+    return [str(r) for r in runs] 
+
+def batch_runs(runs, n=5):
+    """Split list of runs into chunks of size n"""
+    for i in range(0, len(runs), n):
+        yield runs[i:i+n]
+
+def parse_batch_indices(batch_string):
+    batch_list = []
+    parts = batch_string.split(',')
+
+    for part in parts:
+        part = part.strip()
+        if '-' in part:
+            start, end = map(int, part.split('-'))
+            batch_list.extend(range(start, end + 1))
+        else:
+            batch_list.append(int(part))
+
+    return sorted(set(batch_list))  # Rimuove duplicati e ordina
+
 
 #>>>>>~~~~~~~~~~~~~~~~~~ GLOBAL PARAMETERS  ~~~~~~~~~~~~~~~~~~~
 PNFS = config['data_path']
@@ -20,11 +57,11 @@ SELECTED_RECO_CONFIG = RECO_OVERRIDE_FILE if RECO_OVERRIDE_FILE else RECO_PARAME
 CLUSTER_SMEARING_SEED = config.get('cluster_smearing_seed', None)
 SLOW_CONTROL_PREFIX = config.get('slow_control_prefix', 'SLOWCONTROL_run')
 if config['run']:
-    runs = snakefile_helper.parse_runs(config['run'])  # convert config file format into list of runs.
-    BATCHES = list(snakefile_helper.batch_runs(runs, BATCH_SIZE))  # # create batches: [[2500,2501,2502], [2503,2504,2505], ...]
+    runs = parse_runs(config['run'])  # convert config file format into list of runs.
+    BATCHES = list(batch_runs(runs, BATCH_SIZE))  # # create batches: [[2500,2501,2502], [2503,2504,2505], ...]
     BATCH_IDX = range(len(BATCHES))
 else:
-    BATCH_IDX = snakefile_helper.parse_batch_indices(config['batch_idx'])
+    BATCH_IDX = parse_batch_indices(config['batch_idx'])
 overwrite_outputs=config['overwrite_outputs'],
 log_on_console=config['logs_on_console'],
 verbose=config['verbose'],
@@ -144,7 +181,6 @@ rule analyse:
         "-l {log_on_console} "
         "-v {verbose} "
         "-ow {overwrite_outputs}"
-
 
 
 
