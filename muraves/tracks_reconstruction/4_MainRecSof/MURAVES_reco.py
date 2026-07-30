@@ -365,32 +365,38 @@ def write_root_outputs(
     analyzed_root = export_dir / f"MURAVES_AnalyzedData_run{run}.root"
     run_info_root = export_dir / f"MURAVES_miniRunTree_run{run}.root"
 
-    with uproot.recreate(analyzed_root) as root_file:
-        # mktree(payload) writes once; avoid extend() here to prevent duplicated entries.
-        tree = root_file.mktree("AnalyzedData", analyzed_payload)
-        #tree.extend(analyzed_payload)
+    all_config_files = list(config_files) if config_files else []
+    if reco_config_file is not None:
+        all_config_files.append(reco_config_file)
 
+    # Metadata must be appended to the scratch tmp_path (local disk) while it is
+    # still open under temp_to_output, before that context manager copies the
+    # finished file out to its final destination (which may be on pnfs).
+    # add_metadata_to_root reopens the file with ROOT.TFile(..., "UPDATE") for a
+    # random-access write, which pnfs does not support reliably once the file has
+    # already been copied there.
+    meta = None
+    with file_handler.temp_to_output(analyzed_root) as tmp_path:
+        with uproot.recreate(tmp_path) as root_file:
+            # mktree(payload) writes once; avoid extend() here to prevent duplicated entries.
+            tree = root_file.mktree("AnalyzedData", analyzed_payload)
+        if all_config_files:
+            # Build git + config metadata once and reuse for the second ROOT file
+            # to avoid running git subprocess calls and SHA256 twice.
+            meta = root_wrapper.add_metadata_to_root(tmp_path, all_config_files)
     _t_analyzed_written = time.time()
     print(f"[progress] ROOT export: AnalyzedData written in {_t_analyzed_written - _t_arrays:.2f} s", flush=True)
 
-    with uproot.recreate(run_info_root) as root_file:
-        # Same pattern for run-level tree.
-        tree = root_file.mktree("Run_info", run_info_payload)
-        #tree.extend(run_info_payload)
+    with file_handler.temp_to_output(run_info_root) as tmp_path:
+        with uproot.recreate(tmp_path) as root_file:
+            # Same pattern for run-level tree.
+            tree = root_file.mktree("Run_info", run_info_payload)
+            #tree.extend(run_info_payload)
+        if all_config_files:
+            root_wrapper.add_metadata_to_root(tmp_path, all_config_files, prebuilt_metadata=meta)
 
     _t_runinfo_written = time.time()
     print(f"[progress] ROOT export: Run_info written in {_t_runinfo_written - _t_analyzed_written:.2f} s", flush=True)
-
-    if config_files:
-        all_config_files = list(config_files)
-        if reco_config_file is not None:
-            all_config_files.append(reco_config_file)
-        # Build git + config metadata once and reuse for the second ROOT file
-        # to avoid running git subprocess calls and SHA256 twice.
-        meta = root_wrapper.add_metadata_to_root(analyzed_root, all_config_files)
-        root_wrapper.add_metadata_to_root(run_info_root, all_config_files, prebuilt_metadata=meta)
-        _t_meta = time.time()
-        print(f"[progress] ROOT export: metadata written in {_t_meta - _t_runinfo_written:.2f} s", flush=True)
 
     _t_end = time.time()
     print(
@@ -1402,8 +1408,9 @@ def run_reconstruction(
     )
     summary["ProcessingRateEventsPerSecond"] = ev / elapsed_total if ev > 0 else 0.0
 
-    with mini_summary_json.open("w", encoding="utf-8") as handle:
-        json.dump(summary, handle, indent=2)
+    with file_handler.temp_to_output(mini_summary_json) as tmp_path:
+        with tmp_path.open("w", encoding="utf-8") as handle:
+            json.dump(summary, handle, indent=2)
 
     print(f"Number of events: {ev}")
     print(f"[progress] Reconstruction core wall time: {reconstruction_core_elapsed:.2f} s", flush=True)
