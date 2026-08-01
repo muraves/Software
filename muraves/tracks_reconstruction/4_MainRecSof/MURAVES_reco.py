@@ -32,6 +32,14 @@ def _mean_rms(values: Sequence[float]) -> tuple[float, float]:
     return mean, rms
 
 
+def _mirror_azimuth(phi: float, axis: float = 180.0) -> float:
+    """Reflect an azimuth (degrees, in [0, 360)) around phi == axis."""
+    if phi < 0.0:
+        # Sentinel value (e.g. -1.0) meaning "no track found": leave untouched.
+        return phi
+    return (2.0 * axis - phi) % 360.0
+
+
 def _read_slow_control(
     slow_control_path: Path, run: int, config: dict
 ) -> tuple[float, float, float]:
@@ -1234,6 +1242,8 @@ def run_reconstruction(
                 "Theta_4p": theta_4p,
                 "Phi_3p": phi_3p,
                 "Phi_4p": phi_4p,
+                "Phi_3p_Flipped": _mirror_azimuth(phi_3p),
+                "Phi_4p_Flipped": _mirror_azimuth(phi_4p),
     
                 "BestTrack_3p_xy_index": best_track_xy_ind,
                 "BestTrack_3p_xz_index": best_track_xz_ind,
