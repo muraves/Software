@@ -201,6 +201,126 @@ def _safe_get(container: Sequence[Sequence[float]], idx: int) -> Sequence[float]
     return container[idx] if 0 <= idx < len(container) else []
 
 
+# ---------------------------------------------------------------------------
+# AnalyzedData branches whose per-event array length (cardinality) is
+# identical to one or more sibling branches. uproot.mktree() gives every
+# jagged/variable-length branch its own private "n<branch>" counter branch by
+# default; when several branches share the exact same per-event length this
+# duplicates the same length information many times over in the output ROOT
+# file (e.g. nClusterPosition_Z1 == nClusterEnergy_Z1 == ... == Nclusters_Z1
+# for every event). Grouping branches here routes them to one shared counter
+# branch instead.
+#
+# Every group below was verified empirically against a full reconstruction of
+# run 2500 (40000 real events, test_data/RAW_GZ/NERO) by comparing per-event
+# list lengths across the whole run, not just assumed from the source code.
+# Only groups that matched for *all* events were kept; anything that did not
+# match on every single event was left ungrouped (falls back to its own
+# default "n<branch>" counter, i.e. today's behaviour), out of caution with
+# real physics data.
+_SHARED_COUNTER_GROUPS: dict[str, list[str]] = {
+    # Per-plane cluster branches: length == Nclusters_<plane> (verified, 0 mismatches/40000).
+    # isInTrack_3p_cl<plane> / isInTrack_4p_cl<plane> are only added for planes 1 (Z1/Y1):
+    # for planes 2/3 the same flags come out length-0 whenever the *neighbouring* plane has
+    # 0 clusters (a pre-existing quirk of Tracking.MakeTracks, unrelated to this branch), so
+    # their length does not reliably equal Nclusters_<plane> and grouping them would risk a
+    # ValueError (or worse, silently wrong data) at write time -- verified mismatch on
+    # 1483-2036 out of 40000 events depending on plane/projection.
+    "ClusterGroup_Z1": [
+        "ClusterSize_Z1", "ClusterZ1_Texp", "ClusterEnergy_Z1", "ClusterPosition_Z1",
+        "isInTrack_3p_clZ1", "isInTrack_4p_clZ1",
+    ],
+    "ClusterGroup_Z2": ["ClusterSize_Z2", "ClusterZ2_Texp", "ClusterEnergy_Z2", "ClusterPosition_Z2"],
+    "ClusterGroup_Z3": ["ClusterSize_Z3", "ClusterZ3_Texp", "ClusterEnergy_Z3", "ClusterPosition_Z3"],
+    "ClusterGroup_Z4": ["ClusterSize_Z4", "ClusterZ4_Texp", "ClusterEnergy_Z4", "ClusterPosition_Z4"],
+    "ClusterGroup_Y1": [
+        "ClusterSize_Y1", "ClusterY1_Texp", "ClusterEnergy_Y1", "ClusterPosition_Y1",
+        "isInTrack_3p_clY1", "isInTrack_4p_clY1",
+    ],
+    "ClusterGroup_Y2": ["ClusterSize_Y2", "ClusterY2_Texp", "ClusterEnergy_Y2", "ClusterPosition_Y2"],
+    "ClusterGroup_Y3": ["ClusterSize_Y3", "ClusterY3_Texp", "ClusterEnergy_Y3", "ClusterPosition_Y3"],
+    "ClusterGroup_Y4": ["ClusterSize_Y4", "ClusterY4_Texp", "ClusterEnergy_Y4", "ClusterPosition_Y4"],
+
+    # Per-plane strip branches (flattened nested lists, see encode_nested()). There is no
+    # pre-existing explicit "total strip count" field for these, but the 3 branches always
+    # share the same per-event flattened length within a plane (verified, 0 mismatches/40000).
+    # Note: the per-cluster grouping of strips was already lost before this change (the
+    # encode_nested __counts breakdown is intentionally left disabled, "Store only flat
+    # values like in c++ code") -- that is pre-existing behaviour, unrelated to this fix.
+    "StripsGroup_Z1": ["StripsEnergy_Z1", "StripsPosition_Z1", "StripsID_Z1"],
+    "StripsGroup_Z2": ["StripsEnergy_Z2", "StripsPosition_Z2", "StripsID_Z2"],
+    "StripsGroup_Z3": ["StripsEnergy_Z3", "StripsPosition_Z3", "StripsID_Z3"],
+    "StripsGroup_Z4": ["StripsEnergy_Z4", "StripsPosition_Z4", "StripsID_Z4"],
+    "StripsGroup_Y1": ["StripsEnergy_Y1", "StripsPosition_Y1", "StripsID_Y1"],
+    "StripsGroup_Y2": ["StripsEnergy_Y2", "StripsPosition_Y2", "StripsID_Y2"],
+    "StripsGroup_Y3": ["StripsEnergy_Y3", "StripsPosition_Y3", "StripsID_Y3"],
+    "StripsGroup_Y4": ["StripsEnergy_Y4", "StripsPosition_Y4", "StripsID_Y4"],
+
+    # Per-3-point-track branches: length == Ntracks_3p_xz / Ntracks_3p_xy (verified, 0
+    # mismatches/40000). ExpectedPosition_OnPlane4th_xz/xy is intentionally excluded: it is
+    # only appended when the 4th-plane extrapolation lands within the detector acceptance, so
+    # its length is <= Ntracks_3p_* and does NOT match it for every event (verified: matches
+    # only 9510/40000 xz events and 21566/40000 xy events) -- it keeps its own private counter.
+    "Track3pGroup_xz": [
+        "Intercept_3p_xz", "Slope_3p_xz", "chiSquare_3p_xz",
+        "TrackCluster_z1_index", "TrackCluster_z2_index", "TrackCluster_z3_index",
+        "Residue_Track3p_z1", "Residue_Track3p_z2", "Residue_Track3p_z3",
+        "TrackEnergy_3p_xz", "Plane4th_isIntercepted_xz",
+    ],
+    "Track3pGroup_xy": [
+        "Intercept_3p_xy", "Slope_3p_xy", "chiSquare_3p_xy",
+        "TrackCluster_y1_index", "TrackCluster_y2_index", "TrackCluster_y3_index",
+        "Residue_Track3p_y1", "Residue_Track3p_y2", "Residue_Track3p_y3",
+        "TrackEnergy_3p_xy", "Plane4th_isIntercepted_xy",
+    ],
+
+    # Per-4-point-candidate branches (flattened nested lists), no pre-existing explicit count
+    # field, but always share the same per-event flattened length within a side (verified, 0
+    # mismatches/40000).
+    "Track4pGroup_xz": [
+        "Intercept_4p_xz", "Slope_4p_xz", "chiSquare_4p_xz",
+        "displacement_p4_xz", "cluster_c4_index_xz", "ScatteringAngle_xz",
+    ],
+    "Track4pGroup_xy": [
+        "Intercept_4p_xy", "Slope_4p_xy", "chiSquare_4p_xy",
+        "displacement_p4_xy", "cluster_c4_index_xy", "ScatteringAngle_xy",
+    ],
+}
+
+
+def _apply_shared_counter_groups(ak_module, payload: dict[str, object]) -> dict[str, object]:
+    """Merge grouped branches into single record-jagged branches sharing one counter.
+
+    uproot.mktree() gives every jagged/variable-length branch its own private
+    "n<branch>" counter by default. Passing a plain ``counter_name`` callable
+    that maps several *different* branch names to the same counter name is
+    NOT safe with the installed uproot version (5.6.9): it corrupts internal
+    TTree bookkeeping and raises ``struct.error: required argument is not an
+    integer`` at write time (verified with a minimal 3-branch reproduction,
+    independent of this pipeline's data).
+
+    The supported way to make several jagged branches share exactly one
+    counter branch is to zip them into a single Awkward record array (one
+    List[Record] branch instead of several parallel List[float] branches);
+    uproot's writer natively splits a List[Record] branch back out into one
+    physical TBranch per record field, all driven by one shared counter
+    branch (verified with the same minimal reproduction: fields keep their
+    original names and round-trip identically, and only one extra counter
+    branch is created for the whole group).
+
+    Only branches present in ``payload`` are merged; groups with fewer than
+    two members actually present are left untouched.
+    """
+    merged = dict(payload)
+    for group_name, members in _SHARED_COUNTER_GROUPS.items():
+        available = [m for m in members if m in merged]
+        if len(available) < 2:
+            continue
+        fields = {m: merged.pop(m) for m in available}
+        merged[group_name] = ak_module.zip(fields, depth_limit=None)
+    return merged
+
+
 def write_root_outputs(
     analysis_jsonl: Path,
     mini_summary_json: Path,
@@ -384,10 +504,20 @@ def write_root_outputs(
     # random-access write, which pnfs does not support reliably once the file has
     # already been copied there.
     meta = None
+    # Merge branches with an identical per-event cardinality (see
+    # _SHARED_COUNTER_GROUPS above) into single record-jagged branches so uproot writes
+    # one shared counter per group instead of a private counter per branch, without
+    # renaming any of the original branches (field_name below strips the synthetic
+    # group key and keeps each field's original name).
+    analyzed_payload_for_root = _apply_shared_counter_groups(ak, analyzed_payload)
     with file_handler.temp_to_output(analyzed_root) as tmp_path:
         with uproot.recreate(tmp_path) as root_file:
             # mktree(payload) writes once; avoid extend() here to prevent duplicated entries.
-            tree = root_file.mktree("AnalyzedData", analyzed_payload)
+            tree = root_file.mktree(
+                "AnalyzedData",
+                analyzed_payload_for_root,
+                field_name=lambda outer, inner: inner,
+            )
         if all_config_files:
             # Build git + config metadata once and reuse for the second ROOT file
             # to avoid running git subprocess calls and SHA256 twice.
