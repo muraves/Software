@@ -15,8 +15,9 @@ singularity-args: "--cleanenv -B $HOME/Software -B $HOME/muraves_outputs -B /tmp
 max-jobs-per-second: 100
 max-status-checks-per-second: 1
 seconds-between-status-checks: 120
-restart-times: 0
+restart-times: 2
 local-cores: 1
 jobs: 250
 cores: {threads}
+latency-wait: 60
 verbose: False
