@@ -53,7 +53,7 @@ RECO_PARAMETERS_FILE = EXEC_CFG.get('reco_parameters_file', 'muraves_cfg_files/r
 RECO_OVERRIDE_FILE = EXEC_CFG.get('reco_override_file', '')
 SPIROC_MAPPING_FILE = EXEC_CFG.get('spiroc_mapping_file', 'muraves_cfg_files/spiroc-hybrid-map.cfg')
 TELESCOPE_CFG_TEMPLATE = EXEC_CFG.get('telescope_cfg_template', 'muraves_cfg_files/telescope{color}.cfg')
-PEDESTAL_BENCHMARK_TEMPLATE = EXEC_CFG.get('pedestal_benchmark_template', '3_PedAna/{color}_PED_BANCHMARK')
+PEDESTAL_BENCHMARK_TEMPLATE = EXEC_CFG.get('pedestal_benchmark_template', 'muraves_cfg_files/pedestal_1phe_values/{color}_PED_BANCHMARK')
 SELECTED_RECO_CONFIG = RECO_OVERRIDE_FILE if RECO_OVERRIDE_FILE else RECO_PARAMETERS_FILE
 CLUSTER_SMEARING_SEED = config.get('cluster_smearing_seed', None)
 SLOW_CONTROL_PREFIX = config.get('slow_control_prefix', 'SLOWCONTROL_run')
@@ -99,53 +99,54 @@ rule parse_batch:
     shell:
         "python {input.script} -i {params.raw_data_path} -th {threads} -t {wildcards.type} -r {params.runs} -o {output.output_filename} -l {log_on_console} -v {verbose} -ow {overwrite_outputs}"
 
-rule prereco:
-    threads: THREADS
-    container: '/user/abiolchi/muraves-sing.sif'
-    input:
-        script = '2_PreRec/MakePedestalTree.py',
-        input_filename = "{output_path}/PARSED/{color}/{version}/{type}_batch{batch_idx}.stamp"
-    params:
-        nBoards = 16,
-        nInfoBoard = 39,
-        nChannels= 32
-    output:
-        output_filename = "{output_path}/PRERECONSTRUCTED/{color}/{version}/{type}_batch{batch_idx}.stamp"
-    shell: "python {input.script} -i {input.input_filename} -info {params.nBoards} {params.nInfoBoard} {params.nChannels} -o {output.output_filename} -th {threads} -l {log_on_console} -v {verbose} -ow {overwrite_outputs}"
-
-
-
-rule pedestal_analysis:
-    threads: THREADS
-    container: '/user/abiolchi/muraves-sing.sif'
-    input:
-        script = '3_PedAna/OnePhE_evaluator.py',
-        input_filename = '{output_path}/PRERECONSTRUCTED/{color}/{version}/PIEDISTALLI_batch{batch_idx}.stamp'
-    params: # to be removed at next version
-        nBoards = 16,
-        nInfoBoard = 39,
-        nChannels= 32,
-        overwrite_outputs = "True"
-
-    #    number_of_runs = 1
-    #    delta_around_central_runID = 0
-    output:
-        output_filename = "{output_path}/PEDESTAL/{color}/{version}/PIEDISTALLI_batch{batch_idx}.stamp",
-        #sub_files = 
-        #expand(
-        #    "{{output_path}}/PEDESTAL/{{color}}/{{version}}/{run}/pedestal_{n}.cfg", run = lambda wildcards:
-        #    ( BATCHES[int(wildcards.batch_idx)] if config.get('run')
-        #        else list(range(int(batch_idx) * BATCH_SIZE, int(wildcards.batch_idx) * BATCH_SIZE + BATCH_SIZE))
-        #    ),   n = range(16)
-        #) ##NB: CONS--> these subruns will remain silents, the success has to be checks through logs 
-    shell: "python {input.script} -i {input.input_filename} -info {params.nBoards} {params.nInfoBoard} {params.nChannels} -o {output.output_filename} -th {threads} -l {log_on_console} -v {verbose} -ow {params.overwrite_outputs}"
+# Alice: with the new pedestal reader these two steps are not needed anymore
+#rule prereco:
+#    threads: THREADS
+#    container: '/user/abiolchi/muraves-sing.sif'
+#    input:
+#        script = '2_PreRec/MakePedestalTree.py',
+#        input_filename = "{output_path}/PARSED/{color}/{version}/{type}_batch{batch_idx}.stamp"
+#    params:
+#        nBoards = 16,
+#        nInfoBoard = 39,
+#        nChannels= 32
+#    output:
+#        output_filename = "{output_path}/PRERECONSTRUCTED/{color}/{version}/{type}_batch{batch_idx}.stamp"
+#    shell: "python {input.script} -i {input.input_filename} -info {params.nBoards} {params.nInfoBoard} {params.nChannels} -o {output.output_filename} -th {threads} -l {log_on_console} -v {verbose} -ow {overwrite_outputs}"
+#
+#
+#
+#rule pedestal_analysis:
+#    threads: THREADS
+#    container: '/user/abiolchi/muraves-sing.sif'
+#    input:
+#        script = '3_PedAna/OnePhE_evaluator.py',
+#        input_filename = '{output_path}/PRERECONSTRUCTED/{color}/{version}/PIEDISTALLI_batch{batch_idx}.stamp'
+#    params: # to be removed at next version
+#        nBoards = 16,
+#        nInfoBoard = 39,
+#        nChannels= 32,
+#        overwrite_outputs = "True"
+#
+#    #    number_of_runs = 1
+#    #    delta_around_central_runID = 0
+#    output:
+#        output_filename = "{output_path}/PEDESTAL/{color}/{version}/PIEDISTALLI_batch{batch_idx}.stamp",
+#        #sub_files = 
+#        #expand(
+#        #    "{{output_path}}/PEDESTAL/{{color}}/{{version}}/{run}/pedestal_{n}.cfg", run = lambda wildcards:
+#        #    ( BATCHES[int(wildcards.batch_idx)] if config.get('run')
+#        #        else list(range(int(batch_idx) * BATCH_SIZE, int(wildcards.batch_idx) * BATCH_SIZE + BATCH_SIZE))
+#        #    ),   n = range(16)
+#        #) ##NB: CONS--> these subruns will remain silents, the success has to be checks through logs 
+#    shell: "python {input.script} -i {input.input_filename} -info {params.nBoards} {params.nInfoBoard} {params.nChannels} -o {output.output_filename} -th {threads} -l {log_on_console} -v {verbose} -ow {params.overwrite_outputs}"
 
 
 
 # Telescope-level 1phe calibration: all runs of a telescope share the same pedestal_N files,
 # derived once from the benchmark ped_onephe_sk*.txt files shipped with the repo.
 # This replaces the per-run `pedestal_analysis` rule in the reconstruction chain, so runs
-# no longer need the PIEDISTALLI parse/prereco steps.
+# no longer need the PIEDISTALLI parse/prereco/pedestal_analysis steps.
 rule pedestal_reader:
     container: '/user/abiolchi/muraves-sing.sif'
     input:
