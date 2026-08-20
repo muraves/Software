@@ -56,5 +56,5 @@ execution_config:
   telescope_cfg_template: "muraves_cfg_files/telescope{color}.cfg"
   # Benchmark 1phe input files (ped_onephe_sk*.txt), one folder per telescope.
   # All runs of a telescope share the pedestal_N files derived from these.
-  pedestal_benchmark_template: "3_PedAna/{color}_PED_BANCHMARK"
+  pedestal_benchmark_template: "muraves_cfg_files/pedestal_1phe_values/{color}_PED_BANCHMARK"
 
