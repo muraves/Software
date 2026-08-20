@@ -11,6 +11,12 @@
 ! Date        : yyyy-mm-dd           
 !-----------------------------------------------------------------------------
 
+!================ Workflow tag v0.5.0-last-old-1phe-values 2026-08-20 ==================================
+|Description:
+|  - Additional variable: flipped phi. This variable is suppose to be the correct, that matching the phi angle defined in the simulation. See DORA's presentation: https://agenda.infn.it/event/53139/contributions/303420/attachments/153876/236248/20260728_MuravesMeeting.pdf
+|  - Some variables of the tree produced by the pythonised version of the reconstruction script are now trimmed because there were simply repeated multiple times. More info in tag relese.
+
+
 !================ Workflow tag v0.4.0 2026-06-16 ==================================
 |Description:
 |  - Export hardcoded parameter into configuration files and reorganisation in https://github.com/muraves/Software/pull/9
