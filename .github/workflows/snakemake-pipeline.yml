@@ -6,6 +6,9 @@ on:
       - main
       - master
       - dev
+    paths:
+      - 'muraves/**'
+      - 'muraves_lib/**'
   workflow_dispatch:
     inputs:
       run_label:
