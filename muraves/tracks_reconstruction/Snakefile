@@ -73,7 +73,7 @@ localrules: all
 rule all:
     input:
         expand(
-            '{output_path}/RECONSTRUCTED/{color}/{version}/MURAVES_AnalyzedData_batch{batch_idx}.stamp',
+            '{output_path}/GOLDEN_SELECTION/{color}/{version}/Track4p_batch{batch_idx}.stamp',
             output_path=PNFS if config.get('copy_to_data') else HOME,
             color=config['hodoscope'],
             version=config['version'],
@@ -218,6 +218,26 @@ rule analyse:
         "-ow {overwrite_outputs}"
 
 
+
+
+# Golden selection: keep the events with a valid 3-plane AND 4-plane track and write,
+# for each run, a flat Tracks4ptree (Track4p_run<N>.root) ready for physics analysis.
+rule golden_selection:
+    threads: THREADS
+    container: '/user/abiolchi/muraves-sing.sif'
+    input:
+        script = '5_GoldenSelection/golden_selection.py',
+        reconstructed = '{output_path}/RECONSTRUCTED/{color}/{version}/MURAVES_AnalyzedData_batch{batch_idx}.stamp'
+    output:
+        output_filename = '{output_path}/GOLDEN_SELECTION/{color}/{version}/Track4p_batch{batch_idx}.stamp'
+    shell:
+        "python {input.script} "
+        "-i {input.reconstructed} "
+        "-o {output.output_filename} "
+        "-th {threads} "
+        "-l {log_on_console} "
+        "-v {verbose} "
+        "-ow {overwrite_outputs}"
 
 
 # Not used anymore
