@@ -61,6 +61,30 @@ SPIROC_MAPPING_FILE = EXEC_CFG.get('spiroc_mapping_file', 'muraves_cfg_files/spi
 TELESCOPE_CFG_TEMPLATE = EXEC_CFG.get('telescope_cfg_template', 'muraves_cfg_files/telescope{color}.cfg')
 PEDESTAL_BENCHMARK_TEMPLATE = EXEC_CFG.get('pedestal_benchmark_template', 'muraves_cfg_files/pedestal_1phe_values/{color}_PED_BANCHMARK')
 SELECTED_RECO_CONFIG = RECO_OVERRIDE_FILE if RECO_OVERRIDE_FILE else RECO_PARAMETERS_FILE
+
+# Reconstruction parameters (same file and same merge rule as muraves_lib.reco.reco_config,
+# which cannot be imported here: the Snakemake submission environment does not have muraves_lib).
+def _deep_merge(base, override):
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+def load_reco_parameters():
+    import json
+    with open(RECO_PARAMETERS_FILE) as handle:
+        parameters = json.load(handle)
+    if RECO_OVERRIDE_FILE:
+        with open(RECO_OVERRIDE_FILE) as handle:
+            parameters = _deep_merge(parameters, json.load(handle))
+    return parameters
+
+RECO_PARAMETERS = load_reco_parameters()
+N_BOARDS = int(RECO_PARAMETERS['electronics']['n_boards'])
+N_CHANNELS = int(RECO_PARAMETERS['electronics']['n_channels'])
 CLUSTER_SMEARING_SEED = config.get('cluster_smearing_seed', None)
 SLOW_CONTROL_PREFIX = config.get('slow_control_prefix', 'SLOWCONTROL_run')
 if config['run']:
@@ -100,10 +124,11 @@ rule parse_batch:
             ( BATCHES[int(wildcards.batch_idx)] if config.get('run')
                 else list(range(int(wildcards.batch_idx) * BATCH_SIZE, int(wildcards.batch_idx) * BATCH_SIZE + BATCH_SIZE))
             ),  
+        rows_to_combine=N_BOARDS, # one raw-file row per board makes one event
     output:
         output_filename="{output_path}/PARSED/{color}/{version}/{type}_batch{batch_idx}.stamp" #Questo output contiene la lista dei file prodotti dal batch, che saranno usati come input per le regole successive.
     shell:
-        "python {input.script} -i {params.raw_data_path} -th {threads} -t {wildcards.type} -r {params.runs} -o {output.output_filename} -l {log_on_console} -v {verbose} -ow {overwrite_outputs}"
+        "python {input.script} -i {params.raw_data_path} -th {threads} -t {wildcards.type} -r {params.runs} -n {params.rows_to_combine} -o {output.output_filename} -l {log_on_console} -v {verbose} -ow {overwrite_outputs}"
 
 # Alice: with the new pedestal reader these two steps are not needed anymore
 #rule prereco:
@@ -159,17 +184,17 @@ rule pedestal_reader:
         script = '3_PedAna/PedestalReader.py',
         benchmark_files = lambda wildcards: expand(
             PEDESTAL_BENCHMARK_TEMPLATE.format(color=wildcards.color) + '/ped_onephe_sk{n}.txt',
-            n=range(1, 17)
+            n=range(1, N_BOARDS + 1)
         )
     params:
         benchmark_dir = lambda wildcards: PEDESTAL_BENCHMARK_TEMPLATE.format(color=wildcards.color),
         output_base = lambda wildcards: f'{wildcards.output_path}/PEDESTAL/{wildcards.color}/{wildcards.version}',
-        nBoards = 16,
-        nChannels = 32
+        nBoards = N_BOARDS,
+        nChannels = N_CHANNELS
     output:
         stamp = '{output_path}/PEDESTAL/{color}/{version}/PEDESTAL_BENCHMARK_{color}.stamp',
         pedestal_files = expand(
-            '{{output_path}}/PEDESTAL/{{color}}/{{version}}/{{color}}/pedestal_{n}', n=range(16)
+            '{{output_path}}/PEDESTAL/{{color}}/{{version}}/{{color}}/pedestal_{n}', n=range(N_BOARDS)
         )
     shell:
         "python {input.script} "
