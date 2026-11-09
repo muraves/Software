@@ -49,10 +49,9 @@ overwrite_outputs: True # (True/False) if True, existing output files will be ov
 
 #-----------execution configuration files-----------------
 execution_config:
-  # Data-specific parameters (raw data format, slow control, runtime defaults).
-  # They are merged on top of the shared detector/reconstruction parameters shipped
-  # with the package: muraves_lib/reco/data/reco_parameters.json
-  reco_parameters_file: "muraves_cfg_files/data_reco_parameters.json"
+  # Reconstruction parameters, shared with the simulation chain and shipped with the
+  # muraves_lib package (each section says whether data and/or simulation use it).
+  reco_parameters_file: "../../muraves_lib/reco/data/reco_parameters.json"
   # Optional override file merged on top of reco_parameters_file. Leave empty to disable.
   reco_override_file: ""
   spiroc_mapping_file: "muraves_cfg_files/spiroc-hybrid-map.cfg"

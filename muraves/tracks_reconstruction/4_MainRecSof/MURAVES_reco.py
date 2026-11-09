@@ -503,6 +503,9 @@ def write_root_outputs(
     all_config_files = list(config_files) if config_files else []
     if reco_config_file is not None:
         all_config_files.append(reco_config_file)
+    # The same file can be listed twice (e.g. the packaged reco parameters passed
+    # explicitly as --base-config): keep each file once in the metadata.
+    all_config_files = list({Path(f).resolve(): Path(f) for f in all_config_files}.values())
 
     # Metadata must be appended to the scratch tmp_path (local disk) while it is
     # still open under temp_to_output, before that context manager copies the
@@ -1794,7 +1797,7 @@ def parse_args(config_defaults: dict | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--progress-every",
         type=int,
-        default=int(config_defaults["reconstruction"]["progress_every_default"]),
+        default=int(config_defaults["data_runtime"]["progress_every_default"]),
         help="Print progress every N events within each run (set 0 to disable).",
     )
     parser.add_argument(

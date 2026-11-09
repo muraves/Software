@@ -1,11 +1,13 @@
 """Reconstruction configuration shared by the MURAVES data and simulation chains.
 
+All parameters live in a single file shipped with this package,
+``data/reco_parameters.json``; each of its sections states in ``_used_by`` whether
+the data chain, the simulation chain or both read it.
+
 The configuration is built in layers, each one deep-merged on top of the previous:
 
-1. ``data/reco_parameters.json`` shipped with this package: detector geometry and
-   reconstruction parameters common to data and simulation (single source of truth);
-2. an optional *base* file provided by the workflow (e.g. the data-specific
-   raw-format and slow-control parameters of ``tracks_reconstruction``);
+1. ``data/reco_parameters.json`` (always loaded);
+2. an optional *base* file (by default the data workflow passes the package file itself);
 3. an optional *override* file, for one-off changes.
 """
 from __future__ import annotations
