@@ -107,16 +107,17 @@ def MakeTracks(
     Z_add: Sequence[float],
     sigma: float,
     tracking_cfg: dict | None = None,
+    strips_cfg: dict | None = None,
 ) -> TracksCollection:
     """Python port of MakeTracks from Tracking.cc."""
     del Texp_cl4  # kept for signature compatibility with C++
 
     cfg = tracking_cfg if tracking_cfg is not None else get_reco_config()["tracking"]
-    cluster_cfg = get_reco_config()["cluster_lists"]
-    first_strip_pos = float(cfg["first_strip_pos"])
-    adjacent_strips_distance = float(cfg["adjacent_strips_distance"])
+    strips = strips_cfg if strips_cfg is not None else get_reco_config()["strips"]
+    first_strip_pos = float(strips["first_strip_pos"])
+    adjacent_strips_distance = float(strips["adjacent_strips_distance"])
     scattering_pi = float(cfg["scattering_pi"])
-    n_strips = int(cluster_cfg["n_strips"])
+    n_strips = int(strips["n_strips"])
     min_p4 = first_strip_pos
     max_p4 = first_strip_pos + (n_strips - 1) * adjacent_strips_distance
 

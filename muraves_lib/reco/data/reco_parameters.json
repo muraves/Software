@@ -60,32 +60,36 @@
       "s2": 10.0,
       "s3": 2.0
     },
-    "proximity_sigma_multiplier": 5.0,
-    "n_boards": 16,
-    "n_channels": 32
+    "proximity_sigma_multiplier": 5.0
+  },
+  "strips": {
+    "_used_by": "data, simulation",
+    "_note": "Strip geometry of one plane: position of the first strip, strip pitch and number of strips.",
+    "first_strip_pos": -0.528,
+    "adjacent_strips_distance": 0.0165,
+    "n_strips": 64
   },
   "cluster_lists": {
     "_used_by": "data, simulation",
     "max_strip_energy": 3000.0,
-    "first_strip_pos": -0.528,
-    "adjacent_strips_distance": 0.0165,
-    "n_strips": 64,
     "min_energy_trigger_mask": 20.0,
     "split_board_index": 32,
     "single_strip_smearing_scale": 1000
   },
   "tracking": {
     "_used_by": "data, simulation",
-    "first_strip_pos": -0.528,
-    "adjacent_strips_distance": 0.0165,
     "scattering_pi": 3.14159
+  },
+  "electronics": {
+    "_used_by": "data only",
+    "_note": "Readout electronics: number of boards and channels per board.",
+    "n_boards": 16,
+    "n_channels": 32
   },
   "read_event": {
     "_used_by": "data only",
     "_note": "Column layout of the raw ADC text files.",
     "n_info_board": 39,
-    "n_channels": 32,
-    "n_boards": 16,
     "time_stamp_index": 35,
     "time_exp_offset": 37,
     "trigger_mask_offset": 39,
@@ -105,7 +109,6 @@
   "data_runtime": {
     "_used_by": "data only",
     "_note": "Command-line defaults of MURAVES_reco.py.",
-    "progress_every_default": 1000,
-    "root_chunk_size_default": 2000
+    "progress_every_default": 1000
   }
 }

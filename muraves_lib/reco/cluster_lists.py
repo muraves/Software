@@ -70,6 +70,7 @@ def CreateClusterList(
     TriggerMask2: Sequence[float],
     smearing_rng: DeterministicSmearingRNG | None = None,
     cluster_cfg: dict | None = None,
+    strips_cfg: dict | None = None,
 ) -> ClusterCollection:
     """
     Python port of CreateClusterList from ClusterLists.cc.
@@ -79,10 +80,11 @@ def CreateClusterList(
     """
 
     cfg = cluster_cfg if cluster_cfg is not None else get_reco_config()["cluster_lists"]
+    strips = strips_cfg if strips_cfg is not None else get_reco_config()["strips"]
     max_strip_energy = float(cfg["max_strip_energy"])
-    first_strip_pos = float(cfg["first_strip_pos"])
-    adjacent_strips_distance = float(cfg["adjacent_strips_distance"])
-    n_strips = int(cfg["n_strips"])
+    first_strip_pos = float(strips["first_strip_pos"])
+    adjacent_strips_distance = float(strips["adjacent_strips_distance"])
+    n_strips = int(strips["n_strips"])
     min_energy_trigger_mask = float(cfg["min_energy_trigger_mask"])
     split_board_index = int(cfg["split_board_index"])
     smearing_scale = int(cfg["single_strip_smearing_scale"])

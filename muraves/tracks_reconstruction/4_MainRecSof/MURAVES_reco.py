@@ -605,8 +605,10 @@ def run_reconstruction(
     proximity_cut_xy = proximity_multiplier * sigma_y # from C++ comment: "point-trackcandidate distance requirement"
 
     # CONSTANT PARAMETERS
-    n_boards = int(reco_cfg["n_boards"])
-    n_channels = int(reco_cfg["n_channels"])
+    electronics_cfg = cfg["electronics"]
+    n_boards = int(electronics_cfg["n_boards"])
+    n_channels = int(electronics_cfg["n_channels"])
+    strips_cfg = cfg["strips"]
     cluster_lists_cfg = cfg["cluster_lists"]
     read_events_cfg = cfg["read_event"]
     tracking_cfg = cfg["tracking"]
@@ -733,7 +735,7 @@ def run_reconstruction(
         for event in adc_handle:
             ev += 1
 
-            event_info = ReadEvent(event, sorted_channels, events_cfg=read_events_cfg)
+            event_info = ReadEvent(event, sorted_channels, events_cfg=read_events_cfg, electronics_cfg=electronics_cfg)
             timestamp = event_info.timeStamp
 
             if first_timestamp is None:
@@ -900,6 +902,7 @@ def run_reconstruction(
                 _safe_get(trigger_mask_strips, 1),
                 smearing_rng=smearing_rng,
                 cluster_cfg=cluster_lists_cfg,
+                strips_cfg=strips_cfg,
             )
             results_p2x = CreateClusterList(
                 deposits_p2x,
@@ -913,6 +916,7 @@ def run_reconstruction(
                 _safe_get(trigger_mask_strips, 5),
                 smearing_rng=smearing_rng,
                 cluster_cfg=cluster_lists_cfg,
+                strips_cfg=strips_cfg,
             )
             results_p3x = CreateClusterList(
                 deposits_p3x,
@@ -926,6 +930,7 @@ def run_reconstruction(
                 _safe_get(trigger_mask_strips, 9),
                 smearing_rng=smearing_rng,
                 cluster_cfg=cluster_lists_cfg,
+                strips_cfg=strips_cfg,
             )
             results_p4x = CreateClusterList(
                 deposits_p4x,
@@ -939,6 +944,7 @@ def run_reconstruction(
                 _safe_get(trigger_mask_strips, 13),
                 smearing_rng=smearing_rng,
                 cluster_cfg=cluster_lists_cfg,
+                strips_cfg=strips_cfg,
             )
 
             results_p1y = CreateClusterList(
@@ -953,6 +959,7 @@ def run_reconstruction(
                 _safe_get(trigger_mask_strips, 2),
                 smearing_rng=smearing_rng,
                 cluster_cfg=cluster_lists_cfg,
+                strips_cfg=strips_cfg,
             )
             results_p2y = CreateClusterList(
                 deposits_p2y,
@@ -966,6 +973,7 @@ def run_reconstruction(
                 _safe_get(trigger_mask_strips, 6),
                 smearing_rng=smearing_rng,
                 cluster_cfg=cluster_lists_cfg,
+                strips_cfg=strips_cfg,
             )
             results_p3y = CreateClusterList(
                 deposits_p3y,
@@ -979,6 +987,7 @@ def run_reconstruction(
                 _safe_get(trigger_mask_strips, 10),
                 smearing_rng=smearing_rng,
                 cluster_cfg=cluster_lists_cfg,
+                strips_cfg=strips_cfg,
             )
             results_p4y = CreateClusterList(
                 deposits_p4y,
@@ -992,6 +1001,7 @@ def run_reconstruction(
                 _safe_get(trigger_mask_strips, 14),
                 smearing_rng=smearing_rng,
                 cluster_cfg=cluster_lists_cfg,
+                strips_cfg=strips_cfg,
             )
 
             nclusters_z1 = len(results_p1x.ClustersEnergy)
@@ -1061,7 +1071,8 @@ def run_reconstruction(
                 x_pos,
                 z_add,
                 sigma_z,
-                tracking_cfg=tracking_cfg
+                tracking_cfg=tracking_cfg,
+                strips_cfg=strips_cfg,
             )
             tracks_xy = MakeTracks(
                 results_p1y.ClustersPositions,
@@ -1080,7 +1091,8 @@ def run_reconstruction(
                 x_pos,
                 y_add,
                 sigma_y,
-                tracking_cfg=tracking_cfg
+                tracking_cfg=tracking_cfg,
+                strips_cfg=strips_cfg,
             )
 
             ntracks_3p_xz = len(tracks_xz.intercepts_3p)
