@@ -70,13 +70,13 @@ jobs:
                exit 1; \
              fi && \
              echo '=== Snakemake completed successfully ===' && \
-             echo '=== Validating golden selection (step 5) ===' && \
+             echo '=== Validating golden selection (step 4) ===' && \
              OUT=/user/abiolchi/muraves_outputs && \
              VERSION=\$(python -c \"import yaml; print(yaml.safe_load(open('../../tag/requirements.yaml'))['version'])\") && \
              GOLDEN_STAMP=\$OUT/GOLDEN_SELECTION/NERO/\$VERSION/Track4p_batch2500.stamp && \
              echo \"Golden stamp: \$GOLDEN_STAMP\" && cat \$GOLDEN_STAMP && \
              grep -q 'Track4p_run2500.root' \$GOLDEN_STAMP && \
-             python 5_GoldenSelection/validate_golden_selection.py \
+             python 4_GoldenSelection/validate_golden_selection.py \
                --jsonl \$OUT/RECONSTRUCTED/NERO/\$VERSION/MURAVES_AnalyzedData_run2500.jsonl \
                --golden \$OUT/GOLDEN_SELECTION/NERO/\$VERSION/Track4p_run2500.root \
                --min-events 100 && \

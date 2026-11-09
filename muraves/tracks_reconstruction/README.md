@@ -9,9 +9,9 @@ The main entrypoint is:
 The workflow runs the following stages:
 
 1. Parse raw files (`1_Parser`)
-2. Build the telescope pedestal/1phe files from the benchmark calibration files (`3_PedAna/PedestalReader.py`)
-3. Run main reconstruction (`4_MainRecSof`)
-4. Golden selection (`5_GoldenSelection`): keep only the events with a valid 3-plane **and** 4-plane track and write, per run, a flat `Tracks4ptree` (`Track4p_run<N>.root`) ready for physics analysis
+2. Build the telescope pedestal/1phe files from the benchmark calibration files (`2_PedAna/PedestalReader.py`)
+3. Run main reconstruction (`3_MainRecSof`)
+4. Golden selection (`4_GoldenSelection`): keep only the events with a valid 3-plane **and** 4-plane track and write, per run, a flat `Tracks4ptree` (`Track4p_run<N>.root`) ready for physics analysis
 
 ### Shared reconstruction core (`muraves_lib.reco`)
 
@@ -119,7 +119,7 @@ Accepted syntax for `batch_idx`:
 
 ### About `type`
 
-This filed isn't necessary for rules (`3_PedAna`) and (`4_MainRecSof`).
+This filed isn't necessary for rules (`2_PedAna`) and (`3_MainRecSof`).
 
 If the input of rule all is the output of the track reconstruction, `Snakefile` resolves the needed data types through rule dependencies (`ADC` and `PIEDISTALLI`).
 The `type` key in `config.yaml` is currently not required by `rule all` in this version.
@@ -283,9 +283,9 @@ Tree `Tracks4ptree`, one entry per golden event (`BestTrack_3p_ChiSquare_xz != -
 
 - track: `Theta`, `Phi`, `Scattering_xz/xy`, `ChiSquare_xz/xy` (4 planes), `ChiSquare_3p_xz/xy`
 - for each plane `Z1..Z4`, `Y1..Y4`: `TrackClusterEnergy/Position/Size/Exp_<plane>`, `TrackClusterMax/MinStripEnergy_<plane>`, `ClusterMultriplicity_<plane>` and the clusters not on the track `NonTrackClusterEnergy/Size/Position_<plane>`
-- run: `Run`, `TriggerRate`, `RunDuration`, `WorkingPoint`, `Timestamp` (per-event timestamp of step 4; replaces the C++ `Datetime`)
+- run: `Run`, `TriggerRate`, `RunDuration`, `WorkingPoint`, `Timestamp` (per-event timestamp of step 3; replaces the C++ `Datetime`)
 
-A run without golden events gets an empty `Tracks4ptree`. `5_GoldenSelection/validate_golden_selection.py` cross-checks the output against an independent event loop on the step-4 `.jsonl` (used by the CI).
+A run without golden events gets an empty `Tracks4ptree`. `4_GoldenSelection/validate_golden_selection.py` cross-checks the output against an independent event loop on the step-3 `.jsonl` (used by the CI).
 
 `output_path` is:
 

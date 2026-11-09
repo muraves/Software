@@ -132,7 +132,7 @@ rule parse_batch:
 rule pedestal_reader:
     container: '/user/abiolchi/muraves-sing.sif'
     input:
-        script = '3_PedAna/PedestalReader.py',
+        script = '2_PedAna/PedestalReader.py',
         benchmark_files = lambda wildcards: expand(
             PEDESTAL_BENCHMARK_TEMPLATE.format(color=wildcards.color) + '/ped_onephe_sk{n}.txt',
             n=range(1, N_BOARDS + 1)
@@ -165,7 +165,7 @@ rule analyse:
     threads: THREADS
     container: '/user/abiolchi/muraves-sing.sif'
     input:
-        script = "4_MainRecSof/MURAVES_reco.py",
+        script = "3_MainRecSof/MURAVES_reco.py",
         data_file = '{output_path}/PARSED/{color}/{version}/ADC_batch{batch_idx}.stamp',
         one_phe_files = "{output_path}/PEDESTAL/{color}/{version}/PEDESTAL_BENCHMARK_{color}.stamp",
         reco_parameters = RECO_PARAMETERS_FILE,
@@ -212,7 +212,7 @@ rule golden_selection:
     threads: THREADS
     container: '/user/abiolchi/muraves-sing.sif'
     input:
-        script = '5_GoldenSelection/golden_selection.py',
+        script = '4_GoldenSelection/golden_selection.py',
         reconstructed = '{output_path}/RECONSTRUCTED/{color}/{version}/MURAVES_AnalyzedData_batch{batch_idx}.stamp'
     output:
         output_filename = '{output_path}/GOLDEN_SELECTION/{color}/{version}/Track4p_batch{batch_idx}.stamp'

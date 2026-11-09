@@ -1243,7 +1243,7 @@ def run_reconstruction(
                     # Plane-4 cluster used by the best 4p track. cluster_c4_index_* is a
                     # list[list] that is flattened (without counts) in the ROOT export, so
                     # the selected entry is stored explicitly for downstream steps
-                    # (5_GoldenSelection).
+                    # (4_GoldenSelection).
                     if (
                         track_3p_of_4p_idx_xy < len(tracks_xy.cluster_indices_4)
                         and track_4p_idx_xy < len(tracks_xy.cluster_indices_4[track_3p_of_4p_idx_xy])
@@ -1681,7 +1681,7 @@ def _process_batch_run(
     adc_file = Path(adc_file_str)
     run = _extract_run_number(adc_file)
 
-    # A telescope-level pedestal folder (produced by 3_PedAna/PedestalReader.py) applies to
+    # A telescope-level pedestal folder (produced by 2_PedAna/PedestalReader.py) applies to
     # every run of that telescope, so it takes precedence over the per-run pedestal map.
     if fixed_pedestal_folder is not None:
         pedestal_folder = fixed_pedestal_folder
@@ -1754,7 +1754,7 @@ def parse_args(config_defaults: dict | None = None) -> argparse.Namespace:
         type=Path,
         default=None,
         help="Single telescope-level pedestal folder (containing pedestal_N files) applied to "
-             "every run in the batch, as produced by 3_PedAna/PedestalReader.py. "
+             "every run in the batch, as produced by 2_PedAna/PedestalReader.py. "
              "Mutually exclusive with -p/--pedestal-input-filename.",
     )
     parser.add_argument(

@@ -1,10 +1,10 @@
-"""Golden-track selection (step 5 of the MURAVES tracks reconstruction).
+"""Golden-track selection (step 4 of the MURAVES tracks reconstruction).
 
 Python port of AnalysisOfCluster_and_tracks4planes.C, adapted from the
 "experimental compatibility" golden output of simReco-muraves
 (https://github.com/basnyats1024/simReco-muraves).
 
-For every run listed in the step-4 batch stamp it reads
+For every run listed in the step-3 batch stamp it reads
 ``MURAVES_AnalyzedData_run<N>.root`` (tree ``AnalyzedData``) and keeps only the
 *golden* events: a valid best 3-plane XZ track AND a valid best 4-plane XZ
 track (``BestTrack_3p_ChiSquare_xz != -1`` and ``BestTrack_4p_ChiSquare_xz != -1``),
@@ -19,11 +19,11 @@ exactly as the C++ macro. For each golden event it writes one entry of the
 
 Planes 1-3 use the clusters of the best 3p track (``TrackCluster_<p>k_index``
 at ``BestTrack_3p_<proj>_index``); plane 4 uses the cluster of the best 4p
-extension (``BestTrack_4p_ClusterIndex_<proj>``, written by step 4). By
-construction in step 4 the best 4p track is attached to the best 3p track,
+extension (``BestTrack_4p_ClusterIndex_<proj>``, written by step 3). By
+construction in step 3 the best 4p track is attached to the best 3p track,
 so all 4 clusters belong to the same track.
 
-Nothing is recomputed: every value is copied from the step-4 output.
+Nothing is recomputed: every value is copied from the step-3 output.
 """
 
 from __future__ import annotations
@@ -136,7 +136,7 @@ def _pick(jagged: ak.Array, index: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 def _strip_extremes(strips_flat: ak.Array, sizes: ak.Array, selected: np.ndarray):
     """Max/min strip energy of the selected cluster.
 
-    In the step-4 ROOT output ``StripsEnergy_<plane>`` is the per-event
+    In the step-3 ROOT output ``StripsEnergy_<plane>`` is the per-event
     concatenation of every cluster's strips (cluster order = ClusterEnergy
     order, strips sorted by decreasing energy inside each cluster), so the
     selected cluster starts at the cumulative size of the clusters before it.
@@ -173,7 +173,7 @@ def select_golden(events: ak.Array, run_duration: float) -> tuple[dict, dict[str
     n_gate = len(events)
 
     # Selected cluster index on each plane: planes 1-3 from the best 3p track,
-    # plane 4 from the best 4p extension (stored as a scalar by step 4).
+    # plane 4 from the best 4p extension (stored as a scalar by step 3).
     best_3p = {
         "z": ak.to_numpy(events["BestTrack_3p_xz_index"]),
         "y": ak.to_numpy(events["BestTrack_3p_xy_index"]),
@@ -270,7 +270,7 @@ def _write_tree(path: Path, columns: dict) -> None:
 
 
 def _copy_metadata(source: Path, destination: Path, counters: dict[str, int]) -> None:
-    """Propagate step-4 provenance (git/config METADATA) and add golden counters."""
+    """Propagate step-3 provenance (git/config METADATA) and add golden counters."""
     try:
         from muraves_lib import root_wrapper
 
@@ -301,7 +301,7 @@ def process_run(analyzed_root: str | Path, output_dir: Path, overwrite: bool) ->
         return output_root
 
     if analyzed_root.suffix != ".root":
-        logger.error("Run %s: golden selection needs the ROOT output of step 4, got %s", run, analyzed_root)
+        logger.error("Run %s: golden selection needs the ROOT output of step 3, got %s", run, analyzed_root)
         return None
     try:
         with uproot.open(analyzed_root) as handle:
@@ -312,7 +312,7 @@ def process_run(analyzed_root: str | Path, output_dir: Path, overwrite: bool) ->
             missing = [b for b in _input_branches() if b not in tree.keys()]
             if missing:
                 logger.error(
-                    "Run %s: input %s lacks branches %s (was it produced by an older step 4?)",
+                    "Run %s: input %s lacks branches %s (was it produced by an older step 3?)",
                     run, analyzed_root, ", ".join(missing),
                 )
                 return None
@@ -356,10 +356,10 @@ def _configure_logging(log_on_console: str, verbose: str, output_filename: Path)
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Golden-track selection: keep events with a valid 3-plane and 4-plane XZ "
-        "track and write the Tracks4ptree for every run of a step-4 batch."
+        "track and write the Tracks4ptree for every run of a step-3 batch."
     )
     parser.add_argument("-i", "--input-filename", type=Path, required=True,
-                        help="Step-4 batch stamp listing MURAVES_AnalyzedData_run<N>.root files.")
+                        help="Step-3 batch stamp listing MURAVES_AnalyzedData_run<N>.root files.")
     parser.add_argument("-o", "--output-filename", type=Path, required=True,
                         help="Batch stamp to write; Track4p_run<N>.root files go in the same folder.")
     parser.add_argument("-th", "--num-threads", type=int, default=1)
@@ -383,7 +383,7 @@ def main(argv: list[str] | None = None) -> None:
         with Pool(max(1, args.num_threads)) as pool:
             outputs = pool.map(worker, inputs)
     else:
-        logger.info("No step-4 outputs listed in %s", args.input_filename)
+        logger.info("No step-3 outputs listed in %s", args.input_filename)
         outputs = []
 
     produced = [str(o) for o in outputs if o is not None]

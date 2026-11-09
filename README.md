@@ -164,7 +164,7 @@ Reconstruction workflow
 ===
 :construction: **Documentation under contruction** \
 ### Pedestal analysis
-Pedestal analysis can be run with the legacy C++ script, which computes the 1phe values (the Python port `OnePhE_evaluator.py` has been removed: the workflow now uses the benchmark 1phe files, see `muraves/tracks_reconstruction/3_PedAna/PedestalReader.py`).
+Pedestal analysis can be run with the legacy C++ script, which computes the 1phe values (the Python port `OnePhE_evaluator.py` has been removed: the workflow now uses the benchmark 1phe files, see `muraves/tracks_reconstruction/2_PedAna/PedestalReader.py`).
 - `OnePhe_evaluator.cpp`
   - Generate a configuration file for each board. Each of the script has 31 channel values and their corrispondend pedestal and 1phe values.
   - Genetare a root file with SLOWCONTROL information  such as temperature, WorkingPOint, TriggerRate, ..., and the values of pedestal and 1phe for each board.
