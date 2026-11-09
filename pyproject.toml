@@ -1,7 +1,7 @@
 [project]
 
 name = "muraves-lib"   # nome del package (a tua scelta)
-version = "0.0.0"
+version = "0.1.0"  # muraves_lib-vX.Y.Z git tag
 description = "Project for analysis and monitoring of MuRaVes data"
 readme = "README.md"
 requires-python = ">=3.8"
