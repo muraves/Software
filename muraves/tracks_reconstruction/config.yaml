@@ -49,14 +49,14 @@ overwrite_outputs: True # (True/False) if True, existing output files will be ov
 
 #-----------execution configuration files-----------------
 execution_config:
-  # Reconstruction parameters, shared with the simulation chain and shipped with the
-  # muraves_lib package (each section says whether data and/or simulation use it).
-  reco_parameters_file: "../../muraves_lib/reco/data/reco_parameters.json"
-  # Optional override file merged on top of reco_parameters_file. Leave empty to disable.
+  # All detector and reconstruction configuration files live in muraves_lib/configuration/
+  # (shared/ for both chains, data/ for this workflow). The reconstruction parameters
+  # (shared/reco_parameters.json + data/data_parameters.json) are always loaded from there.
+  # Optional JSON override merged on top of them, for one-off changes. Leave empty to disable.
   reco_override_file: ""
-  spiroc_mapping_file: "muraves_cfg_files/spiroc-hybrid-map.cfg"
-  telescope_cfg_template: "muraves_cfg_files/telescope{color}.cfg"
+  spiroc_mapping_file: "../../muraves_lib/configuration/data/electronics_mapping/spiroc-hybrid-map.cfg"
+  telescope_cfg_template: "../../muraves_lib/configuration/data/electronics_mapping/telescope{color}.cfg"
   # Benchmark 1phe input files (ped_onephe_sk*.txt), one folder per telescope.
   # All runs of a telescope share the pedestal_N files derived from these.
-  pedestal_benchmark_template: "muraves_cfg_files/pedestal_1phe_values/{color}_PED_BANCHMARK"
+  pedestal_benchmark_template: "../../muraves_lib/configuration/data/pedestal_1phe_values/{color}_PED_BANCHMARK"
 

@@ -229,9 +229,13 @@ Studies have been performed demonstrating that this is a good trade off between 
 ### What's "spiroc hybrid map"?
 In the main reconstruction script a file called `"../../ANALYSIS/ReconstructionTracks_from3to4/config/spiroc-hybrid-map.cfg"` is required. What's this needed for, what's in it?
 
+*Now in `muraves_lib/configuration/data/electronics_mapping/`: it gives the SPIROC channel read by each strip, used to reorder the raw channels into strip order. See `muraves_lib/configuration/README.md`.*
+
 ### Telescope configuration file 
 This file is used, what's in it? There were some values, related to the telescope, hardcoded in the script. 
 `/home/muraves/Desktop/MURAVES/ANALYSIS/ReconstructionTracks_from3to4/config/telescope`
+
+*Now in `muraves_lib/configuration/data/electronics_mapping/telescope{ROSSO,NERO,BLU}.cfg`: it gives the station and view (x/y) of each board. The plane positions are in `detector_geometry` of `muraves_lib/configuration/shared/reco_parameters.json`.*
 
 ### Data quality monitoring
 :warning: <span style="color:red"> Nothing is implemented in this regard at the moment.</span>

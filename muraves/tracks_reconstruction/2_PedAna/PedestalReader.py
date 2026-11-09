@@ -389,7 +389,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--base-config", type=Path, default=None,
-        help="Reconstruction parameters file (default: the one shipped with muraves_lib)",
+        help="Optional base JSON merged on top of the muraves_lib parameters (shared + data)",
     )
     parser.add_argument(
         "--config", type=Path, default=None,
@@ -405,7 +405,7 @@ if __name__ == "__main__":
 
     from muraves_lib.reco.reco_config import get_reco_config
 
-    reco_config = get_reco_config(args.config, args.base_config)
+    reco_config = get_reco_config(args.config, args.base_config, chain="data")
     num_channels = args.num_channels if args.num_channels is not None else int(reco_config["electronics"]["n_channels"])
     num_boards = args.num_boards if args.num_boards is not None else int(reco_config["electronics"]["n_boards"])
     zero_onephe_replacement = float(reco_config["pedestals"]["zero_onephe_replacement"])

@@ -14,8 +14,8 @@ from muraves_lib.reco.cluster_lists import CreateClusterList, DeterministicSmear
 from muraves_lib.reco.angular_coordinates import TrackAngularCoordinates
 from muraves_lib.reco.tracking import MakeTracks
 from muraves_lib.reco.reco_config import (
-    PACKAGE_CONFIG_PATH,
     get_reco_config,
+    package_config_paths,
     resolve_first_existing,
     set_runtime_config_path,
 )
@@ -576,7 +576,7 @@ def run_reconstruction(
     total_start_wall_time = time.time()
     json_event_output_elapsed = 0.0
 
-    cfg = config or get_reco_config()
+    cfg = config or get_reco_config(chain="data")
     geometry_cfg = cfg["detector_geometry"]
     reco_cfg = cfg["reconstruction"]
 
@@ -1578,7 +1578,7 @@ def run_reconstruction(
         analyzed_root, run_info_root = write_root_outputs(
             analysis_jsonl=analysis_jsonl,
             mini_summary_json=mini_summary_json,
-            config_files=[spiroc_cfg, telescope_cfg, PACKAGE_CONFIG_PATH],
+            config_files=[spiroc_cfg, telescope_cfg, *package_config_paths("data")],
             reco_config_file=reco_config_file,
         )
         root_fill_elapsed = max(0.0, time.time() - root_start_wall_time)
@@ -1723,7 +1723,7 @@ def _process_batch_run(
 
 def parse_args(config_defaults: dict | None = None) -> argparse.Namespace:
     if config_defaults is None:
-        config_defaults = get_reco_config()
+        config_defaults = get_reco_config(chain="data")
     parser = argparse.ArgumentParser(
         description=(
             "Batch MURAVES reconstruction entrypoint for Snakemake. "
@@ -1872,12 +1872,12 @@ def main() -> None:
     pre_parser.add_argument("--base-config", type=Path, default=None)
     pre_args, _ = pre_parser.parse_known_args()
 
-    preloaded_config = get_reco_config(pre_args.config, pre_args.base_config)
+    preloaded_config = get_reco_config(pre_args.config, pre_args.base_config, chain="data")
     args = parse_args(preloaded_config)
 
-    if args.config is not None or args.base_config is not None:
-        set_runtime_config_path(args.config, args.base_config)
-    config = get_reco_config(args.config, args.base_config)
+    # Also seen by the shared muraves_lib.reco modules when they load parameters themselves.
+    set_runtime_config_path(args.config, args.base_config, chain="data")
+    config = get_reco_config(args.config, args.base_config, chain="data")
     color = args.color.upper()
     overwrite_outputs = _parse_bool_flag(args.overwrite_outputs)
 
