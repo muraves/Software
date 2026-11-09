@@ -163,18 +163,6 @@ An example of how parsed data looks like is shown here:
 Reconstruction workflow
 ===
 :construction: **Documentation under contruction** \
-### Pre-reconstruction
-The pre-reconstruction can be run launching `2_PreRec/script_Preanalysis` as it follows:
-```
-python script_Preanalysis.py <start_run> <end_run>
-```
-- check that you gave the correct path where to search for the parsered file modifying the variable: `parseredPATH` inside the script.
-- `2_PreRec/script_Preanalysis` will call `MakePedestalTree.py`
-- <span style="color:green"> Runs without errors, the tree in the root file is filled.</span>
-- <span style="color:yellow">**To be understood:**  The output from the available pre-reconstruction script has less branches as what is suppose to have.</span>
-
-<span style="color:yellow">**NB:** </span> The number of board was set to 12, why?  I brought it to 16.
-
 ### Pedestal analysis
 Pedestal analysis can be run with the legacy C++ script, which computes the 1phe values (the Python port `OnePhE_evaluator.py` has been removed: the workflow now uses the benchmark 1phe files, see `muraves/tracks_reconstruction/3_PedAna/PedestalReader.py`).
 - `OnePhe_evaluator.cpp`
