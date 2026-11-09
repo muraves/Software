@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Sequence
 
-from reco_config import get_reco_config
+from muraves_lib.reco.reco_config import get_reco_config
 
 
 @dataclass

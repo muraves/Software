@@ -1,3 +1,13 @@
+"""Reconstruction configuration shared by the MURAVES data and simulation chains.
+
+The configuration is built in layers, each one deep-merged on top of the previous:
+
+1. ``data/reco_parameters.json`` shipped with this package: detector geometry and
+   reconstruction parameters common to data and simulation (single source of truth);
+2. an optional *base* file provided by the workflow (e.g. the data-specific
+   raw-format and slow-control parameters of ``tracks_reconstruction``);
+3. an optional *override* file, for one-off changes.
+"""
 from __future__ import annotations
 
 import functools
@@ -9,6 +19,7 @@ from typing import Any
 
 RUNTIME_CONFIG_ENV = "MURAVES_RECO_CONFIG"
 RUNTIME_BASE_CONFIG_ENV = "MURAVES_RECO_BASE_CONFIG"
+PACKAGE_CONFIG_PATH = Path(__file__).resolve().parent / "data" / "reco_parameters.json"
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -67,32 +78,19 @@ def _load_reco_config_cached(
         configured = os.environ.get(RUNTIME_CONFIG_ENV)
         candidate = Path(configured).expanduser().resolve() if configured else None
 
-    if base_candidate is None and candidate is None:
-        raise ValueError(
-            "No reconstruction configuration file provided. "
-            "Pass --config in the entrypoint or set runtime config environment variables."
-        )
+    config = _load_json(PACKAGE_CONFIG_PATH)
 
-    if base_candidate is None:
-        if candidate is None:
-            raise ValueError("No reconstruction configuration file provided")
+    if base_candidate is not None:
+        if not base_candidate.exists():
+            raise FileNotFoundError(f"Base configuration file not found: {base_candidate}")
+        config = _deep_merge(config, _load_json(base_candidate))
+
+    if candidate is not None and candidate != base_candidate:
         if not candidate.exists():
-            raise FileNotFoundError(f"Configuration file not found: {candidate}")
-        return _load_json(candidate)
+            raise FileNotFoundError(f"Configuration override file not found: {candidate}")
+        config = _deep_merge(config, _load_json(candidate))
 
-    if not base_candidate.exists():
-        raise FileNotFoundError(f"Base configuration file not found: {base_candidate}")
-
-    base = _load_json(base_candidate)
-
-    if candidate is None or candidate == base_candidate:
-        return base
-
-    if not candidate.exists():
-        raise FileNotFoundError(f"Configuration override file not found: {candidate}")
-
-    override = _load_json(candidate)
-    return _deep_merge(base, override)
+    return config
 
 
 def get_reco_config(
@@ -100,6 +98,9 @@ def get_reco_config(
     base_config_path: Path | str | None = None,
 ) -> dict[str, Any]:
     """Load reconstruction configuration with caching.
+
+    The package defaults are always loaded; ``base_config_path`` and ``config_path``
+    (or the corresponding runtime environment variables) are merged on top.
     
     Configuration is cached after first load to avoid repeated file I/O.
     Call set_runtime_config_path() with new paths to invalidate the cache.

@@ -9,11 +9,16 @@ from typing import Sequence
 import numpy as np
 
 from SearchFileName import Search_File
-from ClusterLists import CreateClusterList, DeterministicSmearingRNG
-from Evaluate_Angular_Coordinates import TrackAngularCoordinates
 from ReadEvent import ReadEvent
-from Tracking import MakeTracks
-from reco_config import get_reco_config, resolve_first_existing, set_runtime_config_path
+from muraves_lib.reco.cluster_lists import CreateClusterList, DeterministicSmearingRNG
+from muraves_lib.reco.angular_coordinates import TrackAngularCoordinates
+from muraves_lib.reco.tracking import MakeTracks
+from muraves_lib.reco.reco_config import (
+    PACKAGE_CONFIG_PATH,
+    get_reco_config,
+    resolve_first_existing,
+    set_runtime_config_path,
+)
 
 from muraves_lib import file_handler, root_wrapper
 from multiprocessing import Pool
@@ -1558,7 +1563,7 @@ def run_reconstruction(
         analyzed_root, run_info_root = write_root_outputs(
             analysis_jsonl=analysis_jsonl,
             mini_summary_json=mini_summary_json,
-            config_files=[spiroc_cfg, telescope_cfg],
+            config_files=[spiroc_cfg, telescope_cfg, PACKAGE_CONFIG_PATH],
             reco_config_file=reco_config_file,
         )
         root_fill_elapsed = max(0.0, time.time() - root_start_wall_time)

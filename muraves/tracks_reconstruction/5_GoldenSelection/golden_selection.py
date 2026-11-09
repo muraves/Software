@@ -39,13 +39,13 @@ import numpy as np
 import uproot
 
 from muraves_lib import file_handler
+from muraves_lib.reco.golden_selector import MISSING, is_golden
 
 logger = logging.getLogger(__name__)
 
 INPUT_TREE = "AnalyzedData"
 RUN_INFO_TREE = "Run_info"
 OUTPUT_TREE = "Tracks4ptree"
-MISSING = -1
 
 PLANES = ("Z1", "Z2", "Z3", "Z4", "Y1", "Y2", "Y3", "Y4")
 PLANES_Z = ("Z1", "Z2", "Z3", "Z4")
@@ -168,9 +168,7 @@ def select_golden(events: ak.Array, run_duration: float) -> tuple[dict, dict[str
     golden and inconsistent (dropped) events.
     """
     n_input = len(events)
-    gate = (events["BestTrack_3p_ChiSquare_xz"] != MISSING) & (
-        events["BestTrack_4p_ChiSquare_xz"] != MISSING
-    )
+    gate = is_golden(events["BestTrack_3p_ChiSquare_xz"], events["BestTrack_4p_ChiSquare_xz"])
     events = events[gate]
     n_gate = len(events)
 

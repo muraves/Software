@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 import math
 from typing import Sequence
 
-from reco_config import get_reco_config
+from .reco_config import get_reco_config
 
 
 @dataclass

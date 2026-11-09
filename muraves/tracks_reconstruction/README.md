@@ -14,6 +14,32 @@ The workflow runs the following stages:
 4. Run main reconstruction (`4_MainRecSof`)
 5. Golden selection (`5_GoldenSelection`): keep only the events with a valid 3-plane **and** 4-plane track and write, per run, a flat `Tracks4ptree` (`Track4p_run<N>.root`) ready for physics analysis
 
+### Shared reconstruction core (`muraves_lib.reco`)
+
+The reconstruction algorithms that must be identical for data and simulation live in the
+`muraves_lib` package, not in this folder:
+
+| Module | Content |
+|---|---|
+| `muraves_lib/reco/cluster_lists.py` | strip clustering (`CreateClusterList`) |
+| `muraves_lib/reco/tracking.py` | 3-plane / 4-plane track building (`MakeTracks`) |
+| `muraves_lib/reco/angular_coordinates.py` | track angles (`TrackAngularCoordinates`) |
+| `muraves_lib/reco/golden_selector.py` | golden-track definition (`is_golden`) |
+| `muraves_lib/reco/reco_config.py` | configuration loader |
+| `muraves_lib/reco/data/reco_parameters.json` | detector geometry and reconstruction parameters |
+
+This folder keeps only what is specific to real data: raw-data reading (`ReadEvent.py`),
+the Snakemake entry points and the data-specific configuration files.
+
+The reconstruction configuration is built in layers, each one merged on top of the previous:
+
+1. `muraves_lib/reco/data/reco_parameters.json`: detector geometry, clustering and tracking parameters, shared with simulation;
+2. `muraves_cfg_files/data_reco_parameters.json` (`execution_config.reco_parameters_file`): raw-data format, slow control and runtime defaults;
+3. `execution_config.reco_override_file` (optional): one-off overrides.
+
+The Snakefile puts the repository root on `PYTHONPATH`, so jobs always use `muraves_lib` from this
+checkout, even if the container image was built with an older copy of the package.
+
 ## 1) Before you run
 
 Check the configuration files loaded by the Snakefile:
@@ -216,6 +242,7 @@ A profile is available in this repository `Software/condor_submit/profile/config
     These commands should run succesfully, without further actions. If this is not the case, please report the bug!
 6. Copy the `.sif` image in your `$HOME` directory. This is the image used in the Snakefile. **NB:** You can also keep it keep it here, but then, remember to modify the path in the snakefile.
 *A dedicated container is preferable as the `muraves_lib` package is direclty built it without istalling it everytime that the container is opened. This is only useful for a developing container.*
+*The Snakefile anyway puts this repository on `PYTHONPATH`, so the jobs import `muraves_lib` from your checkout rather than from the copy built into the image: you don't need to rebuild the image after changing `muraves_lib`.*
 
 7. Once this is done, you're ready to go. Jobs that will be submitted can be checked as follows:
     ```bash

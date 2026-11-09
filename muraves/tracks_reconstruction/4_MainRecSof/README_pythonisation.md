@@ -2,20 +2,21 @@
 
 This folder now includes Python ports of the core C++ reconstruction modules.
 
-## Added Python Files
+## Python Files
 
-- `cluster_lists.py` (`CreateClusterList`, `ClusterPosition`, `ClusterEnergy`, `SortIndices`)
-- `evaluate_angular_coordinates.py` (`TrackAngularCoordinates`)
-- `read_event.py` (`ReadEvent`)
-- `tracking.py` (`MakeTracks`)
-- `MURAVES_reco_v2.py` (Python entrypoint)
+The core reconstruction modules are shared with the simulation chain and live in the
+`muraves_lib.reco` package (see `../README.md`):
 
-Compatibility wrappers with legacy names are also provided:
+- `muraves_lib/reco/cluster_lists.py` (`CreateClusterList`)
+- `muraves_lib/reco/angular_coordinates.py` (`TrackAngularCoordinates`)
+- `muraves_lib/reco/tracking.py` (`MakeTracks`)
+- `muraves_lib/reco/reco_config.py` (configuration loader)
 
-- `ClusterLists.py`
-- `EvaluateAngularCoordinates.py`
-- `ReadEvent.py`
-- `Tracking.py`
+Data-specific modules kept in this folder:
+
+- `ReadEvent.py` (`ReadEvent`)
+- `SearchFileName.py`
+- `MURAVES_reco.py` (Python entrypoint)
 
 ## Entrypoint
 
