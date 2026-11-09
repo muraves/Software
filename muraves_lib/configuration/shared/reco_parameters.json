@@ -1,0 +1,78 @@
+{
+  "_about": "MURAVES reconstruction parameters used by BOTH the data and the simulation chains. Each value is defined only here: chain-specific parameters live in configuration/data/ and configuration/simulation/ and may not redefine these sections. Keys starting with '_' are documentation and are ignored by the code.",
+  "detector_geometry": {
+    "_note": "Plane positions per telescope: z_add (vertical offsets) and x_pos (plane distances).",
+    "ROSSO": {
+      "z_add": [
+        0.292,
+        0.251,
+        0.207,
+        0.0
+      ],
+      "x_pos": [
+        -0.265,
+        0.0,
+        0.262,
+        1.475
+      ]
+    },
+    "NERO": {
+      "z_add": [
+        0.293,
+        0.251,
+        0.21,
+        0.0
+      ],
+      "x_pos": [
+        -0.26,
+        0.0,
+        0.262,
+        1.492
+      ]
+    },
+    "BLU": {
+      "z_add": [
+        0.2712,
+        0.2312,
+        0.1892,
+        0.0
+      ],
+      "x_pos": [
+        -0.26,
+        0.0,
+        0.262,
+        1.492
+      ]
+    }
+  },
+  "reconstruction": {
+    "y_add": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "sigma_z": 0.004,
+    "sigma_y": 0.0035,
+    "cluster_thresholds": {
+      "s1": 6.0,
+      "s2": 10.0,
+      "s3": 2.0
+    },
+    "proximity_sigma_multiplier": 5.0
+  },
+  "strips": {
+    "_note": "Strip geometry of one plane: position of the first strip, strip pitch and number of strips.",
+    "first_strip_pos": -0.528,
+    "adjacent_strips_distance": 0.0165,
+    "n_strips": 64
+  },
+  "cluster_lists": {
+    "max_strip_energy": 3000.0,
+    "min_energy_trigger_mask": 20.0,
+    "split_board_index": 32,
+    "single_strip_smearing_scale": 1000
+  },
+  "tracking": {
+    "scattering_pi": 3.14159
+  }
+}

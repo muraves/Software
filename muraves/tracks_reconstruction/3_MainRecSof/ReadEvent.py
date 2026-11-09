@@ -32,8 +32,8 @@ def ReadEvent(
     """Python port of ReadEvent from ReadEvent.cc."""
     adcdata_splitted = ADCline.rstrip("\n").split("\t")
 
-    cfg = events_cfg if events_cfg is not None else get_reco_config()["read_event"]
-    electronics = electronics_cfg if electronics_cfg is not None else get_reco_config()["electronics"]
+    cfg = events_cfg if events_cfg is not None else get_reco_config(chain="data")["read_event"]
+    electronics = electronics_cfg if electronics_cfg is not None else get_reco_config(chain="data")["electronics"]
     n_info_board = int(cfg["n_info_board"])
     n_channels = int(electronics["n_channels"])
     n_boards = int(electronics["n_boards"])

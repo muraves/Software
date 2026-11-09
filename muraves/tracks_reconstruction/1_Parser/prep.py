@@ -238,7 +238,7 @@ if __name__ == "__main__":
                         help="Number of rows in the file to be combined under a unique event "
                              "(default: electronics.n_boards from the reconstruction parameters)")
     parser.add_argument("--base-config", dest="base_config", type=Path, default=None,
-                        help="Reconstruction parameters file (default: the one shipped with muraves_lib)")
+                        help="Optional base JSON merged on top of the muraves_lib parameters (shared + data)")
     parser.add_argument("--config", dest="config", type=Path, default=None,
                         help="Optional JSON override merged on top of the reconstruction parameters")
     parser.add_argument("-th", "--num_threads", dest="num_threads", type=int, default=1,
@@ -274,7 +274,7 @@ if __name__ == "__main__":
     import parserer
 
     # Event layout of the raw files, shared with the reconstruction (ReadEvent.py).
-    reco_config = get_reco_config(args.config, args.base_config)
+    reco_config = get_reco_config(args.config, args.base_config, chain="data")
     rows_to_combine = (
         args.rows_to_combine if args.rows_to_combine is not None
         else int(reco_config["electronics"]["n_boards"])

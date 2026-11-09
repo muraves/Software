@@ -51,14 +51,21 @@ HOME = os.path.expandvars('/user/abiolchi/muraves_outputs')
 BATCH_SIZE = config['batch_size'] 
 THREADS = config['threads']
 EXEC_CFG = config.get('execution_config', {})
-RECO_PARAMETERS_FILE = EXEC_CFG.get('reco_parameters_file', '../../muraves_lib/reco/data/reco_parameters.json')
+# Configuration files shipped with muraves_lib (see muraves_lib/configuration/README.md).
+# The reconstruction parameters are always the shared + data files of this checkout:
+# the scripts load them from muraves_lib themselves. Use reco_override_file to change values.
+CONFIGURATION_DIR = '../../muraves_lib/configuration'
+RECO_PARAMETERS_FILES = [
+    f'{CONFIGURATION_DIR}/shared/reco_parameters.json',
+    f'{CONFIGURATION_DIR}/data/data_parameters.json',
+]
 RECO_OVERRIDE_FILE = EXEC_CFG.get('reco_override_file', '')
-SPIROC_MAPPING_FILE = EXEC_CFG.get('spiroc_mapping_file', 'muraves_cfg_files/spiroc-hybrid-map.cfg')
-TELESCOPE_CFG_TEMPLATE = EXEC_CFG.get('telescope_cfg_template', 'muraves_cfg_files/telescope{color}.cfg')
-PEDESTAL_BENCHMARK_TEMPLATE = EXEC_CFG.get('pedestal_benchmark_template', 'muraves_cfg_files/pedestal_1phe_values/{color}_PED_BANCHMARK')
-SELECTED_RECO_CONFIG = RECO_OVERRIDE_FILE if RECO_OVERRIDE_FILE else RECO_PARAMETERS_FILE
+RECO_OVERRIDE_ARG = f'--config {RECO_OVERRIDE_FILE}' if RECO_OVERRIDE_FILE else ''
+SPIROC_MAPPING_FILE = EXEC_CFG.get('spiroc_mapping_file', f'{CONFIGURATION_DIR}/data/electronics_mapping/spiroc-hybrid-map.cfg')
+TELESCOPE_CFG_TEMPLATE = EXEC_CFG.get('telescope_cfg_template', f'{CONFIGURATION_DIR}/data/electronics_mapping/telescope{{color}}.cfg')
+PEDESTAL_BENCHMARK_TEMPLATE = EXEC_CFG.get('pedestal_benchmark_template', f'{CONFIGURATION_DIR}/data/pedestal_1phe_values/{{color}}_PED_BANCHMARK')
 
-# Reconstruction parameters (same file and same merge rule as muraves_lib.reco.reco_config,
+# Reconstruction parameters (same files and same merge rule as muraves_lib.reco.reco_config,
 # which cannot be imported here: the Snakemake submission environment does not have muraves_lib).
 def _deep_merge(base, override):
     merged = dict(base)
@@ -71,8 +78,10 @@ def _deep_merge(base, override):
 
 def load_reco_parameters():
     import json
-    with open(RECO_PARAMETERS_FILE) as handle:
-        parameters = json.load(handle)
+    parameters = {}
+    for path in RECO_PARAMETERS_FILES:
+        with open(path) as handle:
+            parameters = _deep_merge(parameters, json.load(handle))
     if RECO_OVERRIDE_FILE:
         with open(RECO_OVERRIDE_FILE) as handle:
             parameters = _deep_merge(parameters, json.load(handle))
@@ -114,18 +123,18 @@ rule parse_batch:
     container: '/user/abiolchi/muraves-sing.sif'
     input:
         script="1_Parser/prep.py",
-        reco_parameters = RECO_PARAMETERS_FILE,
+        reco_parameters = RECO_PARAMETERS_FILES,
     params:
         raw_data_path=f'{PNFS}/RAW_GZ/{{color}}',
         runs=lambda wildcards:
             ( BATCHES[int(wildcards.batch_idx)] if config.get('run')
                 else list(range(int(wildcards.batch_idx) * BATCH_SIZE, int(wildcards.batch_idx) * BATCH_SIZE + BATCH_SIZE))
             ),  
-        reco_config_file = SELECTED_RECO_CONFIG,
+        reco_override_arg = RECO_OVERRIDE_ARG,
     output:
         output_filename="{output_path}/PARSED/{color}/{version}/{type}_batch{batch_idx}.stamp" #Questo output contiene la lista dei file prodotti dal batch, che saranno usati come input per le regole successive.
     shell:
-        "python {input.script} -i {params.raw_data_path} -th {threads} -t {wildcards.type} -r {params.runs} --base-config {input.reco_parameters} --config {params.reco_config_file} -o {output.output_filename} -l {log_on_console} -v {verbose} -ow {overwrite_outputs}"
+        "python {input.script} -i {params.raw_data_path} -th {threads} -t {wildcards.type} -r {params.runs} {params.reco_override_arg} -o {output.output_filename} -l {log_on_console} -v {verbose} -ow {overwrite_outputs}"
 
 # Telescope-level 1phe calibration: all runs of a telescope share the same pedestal_N files,
 # derived once from the benchmark ped_onephe_sk*.txt files shipped with the repo.
@@ -137,13 +146,13 @@ rule pedestal_reader:
             PEDESTAL_BENCHMARK_TEMPLATE.format(color=wildcards.color) + '/ped_onephe_sk{n}.txt',
             n=range(1, N_BOARDS + 1)
         ),
-        reco_parameters = RECO_PARAMETERS_FILE,
+        reco_parameters = RECO_PARAMETERS_FILES,
     params:
         benchmark_dir = lambda wildcards: PEDESTAL_BENCHMARK_TEMPLATE.format(color=wildcards.color),
         output_base = lambda wildcards: f'{wildcards.output_path}/PEDESTAL/{wildcards.color}/{wildcards.version}',
         nBoards = N_BOARDS,
         nChannels = N_CHANNELS,
-        reco_config_file = SELECTED_RECO_CONFIG,
+        reco_override_arg = RECO_OVERRIDE_ARG,
     output:
         stamp = '{output_path}/PEDESTAL/{color}/{version}/PEDESTAL_BENCHMARK_{color}.stamp',
         pedestal_files = expand(
@@ -156,8 +165,7 @@ rule pedestal_reader:
         "--telescope {wildcards.color} "
         "--num-boards {params.nBoards} "
         "--num-channels {params.nChannels} "
-        "--base-config {input.reco_parameters} "
-        "--config {params.reco_config_file} "
+        "{params.reco_override_arg} "
         "--stamp-file {output.stamp}"
 
 
@@ -168,7 +176,7 @@ rule analyse:
         script = "3_MainRecSof/MURAVES_reco.py",
         data_file = '{output_path}/PARSED/{color}/{version}/ADC_batch{batch_idx}.stamp',
         one_phe_files = "{output_path}/PEDESTAL/{color}/{version}/PEDESTAL_BENCHMARK_{color}.stamp",
-        reco_parameters = RECO_PARAMETERS_FILE,
+        reco_parameters = RECO_PARAMETERS_FILES,
         spiroc_mapping = SPIROC_MAPPING_FILE,
         telescope_cfg = lambda wildcards: TELESCOPE_CFG_TEMPLATE.format(color=wildcards.color)
     output:
@@ -177,7 +185,7 @@ rule analyse:
         raw_base = f'{PNFS}/RAW_GZ',
         tracks_base = '.',
         pedestal_folder = lambda wildcards: f'{wildcards.output_path}/PEDESTAL/{wildcards.color}/{wildcards.version}/{wildcards.color}',
-        reco_config_file = SELECTED_RECO_CONFIG,
+        reco_override_arg = RECO_OVERRIDE_ARG,
         slow_control_prefix = SLOW_CONTROL_PREFIX,
         cluster_smearing_seed_arg = (
             f'--cluster-smearing-seed {CLUSTER_SMEARING_SEED}'
@@ -194,8 +202,7 @@ rule analyse:
         "--slow-control-prefix {params.slow_control_prefix} "
         "--spiroc-mapping-file {input.spiroc_mapping} "
         "--telescope-config-file {input.telescope_cfg} "
-        "--base-config {input.reco_parameters} "
-        "--config {params.reco_config_file} "
+        "{params.reco_override_arg} "
         "{params.cluster_smearing_seed_arg} "
         "--write-root "
         "-th {threads} "

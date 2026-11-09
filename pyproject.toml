@@ -14,5 +14,13 @@ build-backend = "setuptools.build_meta"
 packages = ["muraves_lib", "muraves_lib.reco"]   # i pacchetti che vuoi includere
 
 [tool.setuptools.package-data]
-"muraves_lib.reco" = ["data/*.json"]
+# Detector and reconstruction configuration (muraves_lib/configuration/), shipped with the package.
+"muraves_lib" = [
+    "configuration/*.md",
+    "configuration/*/*.json",
+    "configuration/*/*.md",
+    "configuration/data/*/*.cfg",
+    "configuration/data/*/*.md",
+    "configuration/data/pedestal_1phe_values/*/*.txt",
+]
 

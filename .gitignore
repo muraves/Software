@@ -73,8 +73,7 @@ build/
 !test_data/**
 *.json
 # configuration files are tracked
-!muraves_lib/reco/data/*.json
-!muraves/tracks_reconstruction/muraves_cfg_files/*.json
+!muraves_lib/configuration/**/*.json
 *.root
 
 # snakemake #

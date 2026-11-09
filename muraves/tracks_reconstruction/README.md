@@ -25,19 +25,20 @@ The reconstruction algorithms that must be identical for data and simulation liv
 | `muraves_lib/reco/angular_coordinates.py` | track angles (`TrackAngularCoordinates`) |
 | `muraves_lib/reco/golden_selector.py` | golden-track definition (`is_golden`) |
 | `muraves_lib/reco/reco_config.py` | configuration loader |
-| `muraves_lib/reco/data/reco_parameters.json` | all reconstruction parameters (detector geometry, clustering, tracking, raw-data format, slow control) |
+| `muraves_lib/configuration/` | all configuration files: `shared/` (both chains), `data/` (this workflow), `simulation/` |
 
 This folder keeps only what is specific to real data: raw-data reading (`ReadEvent.py`)
 and the Snakemake entry points.
 
-All parameters are in the single file `muraves_lib/reco/data/reco_parameters.json`. JSON has no
-comments, so each section has a `_used_by` entry saying whether the data chain, the simulation
-chain or both read it (keys starting with `_` are documentation only). To change a value for a
-specific processing without touching the shared file, put only that value in a JSON file and set
-it as `execution_config.reco_override_file`: it is merged on top of the shared parameters.
-The override may only use keys that exist in the shared file, in the same section (e.g.
-`{"strips": {"n_strips": 32}}`): a misspelled or misplaced key stops the job with an error
-listing it, instead of being silently ignored.
+All configuration files are in `muraves_lib/configuration/` (see its README):
+the reconstruction parameters are `shared/reco_parameters.json` (used by data and simulation)
+plus `data/data_parameters.json` (used only here); the electronics maps
+(`data/electronics_mapping/`) and the 1phe benchmark files (`data/pedestal_1phe_values/`) are
+data-only too. To change a value for a specific processing without touching these files, put
+only that value in a JSON file and set it as `execution_config.reco_override_file`: it is merged
+on top of the package parameters. The override may only use keys that exist there, in the same
+section (e.g. `{"strips": {"n_strips": 32}}`): a misspelled or misplaced key stops the job with
+an error listing it, instead of being silently ignored.
 
 The Snakefile puts the repository root on `PYTHONPATH`, so jobs always use `muraves_lib` from this
 checkout, even if the container image was built with an older copy of the package.

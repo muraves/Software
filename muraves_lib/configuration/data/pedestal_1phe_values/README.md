@@ -8,6 +8,6 @@
           (non-NaN) values for that column in the same input file
         - A 1phe value of 0 is replaced with 1000 and flagged (flag=1), since it
           usually indicates a dead channel.
-- The values provided are not mapped according the real logic (`/user/abiolchi/Software/muraves/tracks_reconstruction/muraves_cfg_files/spiroc-hybrid-map.cfg`). They are just in the same order as saved on the raw file. 
+- The values provided are not mapped according the real logic (`muraves_lib/configuration/data/electronics_mapping/spiroc-hybrid-map.cfg`). They are just in the same order as saved on the raw file. 
 *NB: The script PedestalReader.py do not perfom the mapping, because it is performed directly (and only) before the clustering, in the main reconstruction script*.
 - Gábor checked that the provided pedestal and 1phe are reasonable for most of the run ~95%. The scripts, the banchmark dataset and the results of this analysis are available on MURAVES Team on Microsoft Teams (https://uclouvain.sharepoint.com/:f:/s/O365G-MURAVESTaskforce/IgD_j0vG1JEgSJjxvK0yWCKWAdzogIsc1Mx18P2Dd-R6_T4?e=miZJjK)
