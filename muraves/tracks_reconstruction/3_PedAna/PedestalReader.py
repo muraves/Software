@@ -39,6 +39,7 @@ def _parse_value(value: str) -> float | None:
 def read_pedestal_file(
     filepath: str | Path,
     stripIndices: Sequence[int],
+    zero_onephe_replacement: float,
     board_idx: int = 0,
 ) -> PedestalStruct:
     """
@@ -67,7 +68,7 @@ def read_pedestal_file(
     Notes:
         - NaN pedestal/1phe values are replaced with the average of the other
           (non-NaN) values for that column found in the same input file
-        - A 1phe value of 0 is replaced with 1000 and flagged (flag=1), since it
+        - A 1phe value of 0 is replaced with pedestals.zero_onephe_replacement (1000) and flagged (flag=1), since it
           usually indicates a failed calibration rather than a genuine reading
         - Channels not present in the file are padded with 0.0
     """
@@ -112,7 +113,7 @@ def read_pedestal_file(
             if onephe is None:
                 onephe_is_nan[channel] = True
             elif onephe == 0.0:
-                raw_onephes[channel] = 1000.0
+                raw_onephes[channel] = zero_onephe_replacement
             else:
                 raw_onephes[channel] = onephe
             raw_flags[channel] = 1 if (pedestal is None or onephe is None or onephe == 0.0) else 0
@@ -309,9 +310,10 @@ def process_pedestal_files(
     output_base: str | Path,
     stripIndices: Sequence[int],
     telescope: str,
+    num_boards: int,
+    zero_onephe_replacement: float,
     input_pattern: str = "ped_onephe_sk{}.txt",
     output_pattern: str = "pedestal_{}",
-    num_boards: int = 16,
 ) -> list[Path]:
     """
     Process multiple pedestal files from input directory and write to output directory.
@@ -325,7 +327,8 @@ def process_pedestal_files(
         telescope:     Telescope name used as sub-folder, e.g. "NERO"
         input_pattern: Pattern for input filenames (use {} for board number, 1-indexed)
         output_pattern:Pattern for output filenames (use {} for board number, 0-indexed)
-        num_boards:    Number of boards to process (default 16)
+        num_boards:    Number of boards to process (electronics.n_boards)
+        zero_onephe_replacement: 1phe value used when the file has 0 (pedestals.zero_onephe_replacement)
 
     Returns:
         List of the pedestal files actually written.
@@ -344,7 +347,7 @@ def process_pedestal_files(
 
         if input_file.exists():
             print(f"Processing {input_file.name} -> {output_file}")
-            ped_data = read_pedestal_file(input_file, stripIndices, board_idx=board_idx)
+            ped_data = read_pedestal_file(input_file, stripIndices, zero_onephe_replacement, board_idx=board_idx)
             write_pedestal_file(output_file, ped_data, board_idx=board_idx)
             written_files.append(output_file)
         else:
@@ -377,12 +380,20 @@ if __name__ == "__main__":
              "Defaults to the prefix of --input-dir's name (e.g. 'NERO_PED_BANCHMARK' -> 'NERO').",
     )
     parser.add_argument(
-        "--num-channels", type=int, default=32,
-        help="Number of channels per board (default: %(default)s)",
+        "--num-channels", type=int, default=None,
+        help="Number of channels per board (default: electronics.n_channels from the reconstruction parameters)",
     )
     parser.add_argument(
-        "--num-boards", type=int, default=16,
-        help="Number of boards/files to process (default: %(default)s)",
+        "--num-boards", type=int, default=None,
+        help="Number of boards/files to process (default: electronics.n_boards from the reconstruction parameters)",
+    )
+    parser.add_argument(
+        "--base-config", type=Path, default=None,
+        help="Reconstruction parameters file (default: the one shipped with muraves_lib)",
+    )
+    parser.add_argument(
+        "--config", type=Path, default=None,
+        help="Optional JSON override merged on top of the reconstruction parameters",
     )
     parser.add_argument(
         "--stamp-file",
@@ -392,7 +403,14 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    strip_indices = list(range(args.num_channels))
+    from muraves_lib.reco.reco_config import get_reco_config
+
+    reco_config = get_reco_config(args.config, args.base_config)
+    num_channels = args.num_channels if args.num_channels is not None else int(reco_config["electronics"]["n_channels"])
+    num_boards = args.num_boards if args.num_boards is not None else int(reco_config["electronics"]["n_boards"])
+    zero_onephe_replacement = float(reco_config["pedestals"]["zero_onephe_replacement"])
+
+    strip_indices = list(range(num_channels))
     print(f"Channels per board: {len(strip_indices)}")
 
     telescope = args.telescope
@@ -410,7 +428,8 @@ if __name__ == "__main__":
         output_base=args.output_dir,
         stripIndices=strip_indices,
         telescope=telescope,
-        num_boards=args.num_boards,
+        num_boards=num_boards,
+        zero_onephe_replacement=zero_onephe_replacement,
     )
     print(f"Done. Output written to: {Path(args.output_dir) / telescope}")
 

@@ -86,6 +86,15 @@
     "n_boards": 16,
     "n_channels": 32
   },
+  "raw_files": {
+    "_used_by": "data only",
+    "_note": "Raw run files: number of events per run for each data type (also part of the raw file names, e.g. slaveData_evts40000_run2500_sr1.gz) and number of events per subrun file.",
+    "events_per_run": {
+      "ADC": 40000,
+      "PIEDISTALLI": 50000
+    },
+    "events_per_subrun": 10000
+  },
   "read_event": {
     "_used_by": "data only",
     "_note": "Column layout of the raw ADC text files.",
@@ -95,6 +104,11 @@
     "trigger_mask_offset": 39,
     "adc_offset": 3,
     "trigger_mask_separator": "_"
+  },
+  "pedestals": {
+    "_used_by": "data only",
+    "_note": "Calibration files: 1phe value used for a channel whose 1phe is 0 in the benchmark file (the channel is flagged).",
+    "zero_onephe_replacement": 1000.0
   },
   "slow_control": {
     "_used_by": "data only",

@@ -5,7 +5,9 @@ from collections import Counter
 
 
 
-def parser_new(fileoutp, eventsTot, run, subrun, numEVT, numSk, color):
+def parser_new(fileoutp, eventsTot, run, subrun, numEVT, numSk, color, values_per_board):
+    # numSk: raw-file rows (one per slave board) combined into one event (electronics.n_boards)
+    # values_per_board: values written per board in the parsed event line (read_event.n_info_board)
     eventsTot = int(eventsTot)
     run = int(run) - 1
     subrun = int(subrun) - 1
@@ -41,11 +43,14 @@ def parser_new(fileoutp, eventsTot, run, subrun, numEVT, numSk, color):
             CK = 0
         logging.debug("\n-----" + str(linecounter) + "-----\n")
         lines = open(fileoutp, 'r').readlines()
-        rr = lines[160000].split('\t')
-        if (rr[0] == '15') :
-            if ((linecounter-2) > 160000):
-                for i in range(160001, linecounter-1):
-                    del lines[160001]
+        # Line 0 is a timestamp, followed by numEVT events of numSk rows (one per board,
+        # first field = board index): the last expected row is the last board of the last event.
+        last_row = int(numEVT) * int(numSk)
+        rr = lines[last_row].split('\t')
+        if (rr[0] == str(int(numSk) - 1)) :
+            if ((linecounter-2) > last_row):
+                for i in range(last_row + 1, linecounter-1):
+                    del lines[last_row + 1]
                 open(fileoutp, 'w').writelines(lines)
         else :
             CK = 1
@@ -58,7 +63,7 @@ def parser_new(fileoutp, eventsTot, run, subrun, numEVT, numSk, color):
             condition = (CK == 0) and  ((linecounter-2)%int(numSk) == 0)
 
         if condition == True:
-            linecounter =160002
+            linecounter = last_row + 2  # header timestamp + all board rows + closing timestamp
             inputF = open(fileoutp, 'r')
             ss = inputF.readlines()
             inputF.close()
@@ -107,7 +112,7 @@ def parser_new(fileoutp, eventsTot, run, subrun, numEVT, numSk, color):
                 offset = 0
                 trigger = 0
                 # s = inputF.readline()
-                p=['']* (int(numSk) * 40)
+                p=['']* (int(numSk) * (values_per_board + 1))
                 #for i in range(int(numSk)*40):
                 #    p.append('')
                 expected_triggers = (linecounter - 2) // int(numSk)
@@ -119,25 +124,25 @@ def parser_new(fileoutp, eventsTot, run, subrun, numEVT, numSk, color):
                         # --- parsing / conversion logic ---
                         h = int('0x'+r[1][2:], 16)
 
-                        p[0+39*offset] = str(h)
-                        p[1+39*offset] = r[0]                   
+                        p[0+values_per_board*offset] = str(h)
+                        p[1+values_per_board*offset] = r[0]                   
                         h = int('0x'+r[2], 16)
-                        p[2+39*offset] = str(h)
+                        p[2+values_per_board*offset] = str(h)
                         for i in range (3, 34):
                             if (i <= 17):
                                 h = int('0x'+r[i][1:], 16)
-                                p[i+39*offset] = str(h)
+                                p[i+values_per_board*offset] = str(h)
                             else :
                                 h = int('0x'+r[i][2:], 16)
-                                p[i+39*offset] = str(h)
+                                p[i+values_per_board*offset] = str(h)
 
-                        p[34+39*offset] = r[40].replace('\n', '')
+                        p[34+values_per_board*offset] = r[40].replace('\n', '')
                         h = int('0x'+r[36], 16)
-                        p[35+39*offset] = str(h)
+                        p[35+values_per_board*offset] = str(h)
                         h = int('0x'+r[37], 16)
-                        p[36+39*offset] = str(h)
+                        p[36+values_per_board*offset] = str(h)
                         h = int('0x'+r[38][1:], 16)
-                        p[37+39*offset] = str(h)
+                        p[37+values_per_board*offset] = str(h)
                         h1 = int('0x'+r[34], 16)
                         h2 = int('0x'+r[35], 16)
                         w1 = '{0:b}'.format(h1)
@@ -159,13 +164,13 @@ def parser_new(fileoutp, eventsTot, run, subrun, numEVT, numSk, color):
                             if(w2[i] == '1'):
                                 tm = tm + str(15 - i) + '_'
 
-                        p[38+39*offset] = tm
+                        p[38+values_per_board*offset] = tm
 
                         if (offset < int(numSk)-1) :
                             offset += 1
                         else :
                             temp_outputfile.write(str(triggerTot) + '\t')
-                            temp_outputfile.write('\t'.join(p[:int(numSk)*39]) + '\n')
+                            temp_outputfile.write('\t'.join(p[:int(numSk)*values_per_board]) + '\n')
                             offset = 0
                             trigger += 1
                             triggerTot += 1
@@ -231,7 +236,7 @@ def insertion_test(a: int, b: int) -> bool:
 
     return False
 
-def check_subevent_number_spacing(file_obj, block_size=39, line_to_print=100) -> ValidationResult:
+def check_subevent_number_spacing(file_obj, block_size, line_to_print=100) -> ValidationResult:
     """
     Validates that event numbers repeat every `block_size` tokens in a file object.
     
@@ -241,7 +246,7 @@ def check_subevent_number_spacing(file_obj, block_size=39, line_to_print=100) ->
 
     Args:
         file_obj: File-like object to validate.
-        block_size: Expected spacing between event numbers (default: 39).
+        block_size: Expected spacing between event numbers (values per board, read_event.n_info_board).
         line_to_print: Line number for debug logging (default: 100).
 
     Returns:

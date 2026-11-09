@@ -16,7 +16,7 @@ from multiprocessing import Pool
 logger = logging.getLogger(__name__)
 
 
-def process_run(type, run, rawfile_path, output_filename, n_events, rows_to_combine):
+def process_run(type, run, rawfile_path, output_filename, n_events, rows_to_combine, values_per_board, events_per_run):
     """
     Process a single run with its subruns.
     
@@ -25,8 +25,10 @@ def process_run(type, run, rawfile_path, output_filename, n_events, rows_to_comb
         run: Run number
         input_optional_files: List of [slowcontrol, log, conteggi] file paths
         output_filename: Output file path
-        n_events: Number of events to process
-        rows_to_combine: Number of rows to combine as a single event
+        n_events: Number of events per subrun file
+        events_per_run: Number of events per run (also part of the raw file names)
+        rows_to_combine: Number of rows to combine as a single event (one per board)
+        values_per_board: Number of values written per board in the parsed event line
         log_on_console: Whether to log to console (True/False as string)
         status_file: Path to status file (json)
         num_threads: Number of threads to use for processing (default=1)
@@ -58,11 +60,10 @@ def process_run(type, run, rawfile_path, output_filename, n_events, rows_to_comb
         "runtime": None
     }
 
+    n_evts = events_per_run
     if type == "ADC":
-        n_evts = 40000 
         type_raw = "slave" 
     else:
-        n_evts = 50000
         type_raw = "ped"
     
     raw_filename_root = f"{rawfile_path}/{type_raw}Data_evts{n_evts}_run{run}" 
@@ -120,15 +121,15 @@ def process_run(type, run, rawfile_path, output_filename, n_events, rows_to_comb
         try:
             if "NERO" in rawfile_path.split("/"):
                 logger.info("Parsing data from NERO")
-                ctrl, tmp_filename = parserer.parser_new(decompressed_filename, 40000 if type == "ADC" else 50000, run, subrun_number, n_events, rows_to_combine, color="NERO")
+                ctrl, tmp_filename = parserer.parser_new(decompressed_filename, events_per_run, run, subrun_number, n_events, rows_to_combine, color="NERO", values_per_board=values_per_board)
                 logger.info(f"tmp_filename: {tmp_filename}, ctrl: {ctrl}")
             elif "ROSSO" in rawfile_path.split("/"):
                 logger.info("Parsing data from ROSSO")
-                ctrl, tmp_filename = parserer.parser_new(decompressed_filename, 40000 if type == "ADC" else 50000, run, subrun_number, n_events, rows_to_combine, color="ROSSO")
+                ctrl, tmp_filename = parserer.parser_new(decompressed_filename, events_per_run, run, subrun_number, n_events, rows_to_combine, color="ROSSO", values_per_board=values_per_board)
                 logger.info(f"tmp_filename: {tmp_filename}, ctrl: {ctrl}")
             elif "BLU" in rawfile_path.split("/"): 
                 logger.info("Parsing data from BLU")
-                ctrl, tmp_filename = parserer.parser_new(decompressed_filename, 40000 if type == "ADC" else 50000, run, subrun_number, n_events, rows_to_combine, color="BLU")
+                ctrl, tmp_filename = parserer.parser_new(decompressed_filename, events_per_run, run, subrun_number, n_events, rows_to_combine, color="BLU", values_per_board=values_per_board)
                 logger.info(f"tmp_filename: {tmp_filename}, ctrl: {ctrl}")
             else:
                 NameError("Data path must contain the color of the hodoscope. Retry.")
@@ -164,13 +165,10 @@ def process_run(type, run, rawfile_path, output_filename, n_events, rows_to_comb
                 os.remove(f)
         # perform quality control on the merged file
         with open(tmp_path, "r") as tf:
-            # check that number of lines is 40 000 for ADC and 50 000 for PIEDISTALLI   
+            # check that the number of lines is the number of events per run (40 000 for ADC and 50 000 for PIEDISTALLI)
             try:
                 n_lines = len(tf.readlines())
-                if type == "ADC":
-                    assert n_lines == 40000, f"Number of lines in the parsed file is not 40 000 but {n_lines}"
-                else:
-                    assert n_lines == 50000, f"Number of lines in the parsed file is not 50 000 but {n_lines}"
+                assert n_lines == events_per_run, f"Number of lines in the parsed file is not {events_per_run} but {n_lines}"
                 tf.seek(0)  # reset file pointer to the beginning of the file for the next check
             except AssertionError as e:
                 logger.error(str(e))
@@ -179,7 +177,7 @@ def process_run(type, run, rawfile_path, output_filename, n_events, rows_to_comb
                 raise # error is handles by temp_to_output context manager that will ensure that an empty file is written in output and the job is not failed.
 
                 
-            check_result = parserer.check_subevent_number_spacing(tf, line_to_print=105)
+            check_result = parserer.check_subevent_number_spacing(tf, block_size=values_per_board, line_to_print=105)
             result["quality_checks"]["has_mismatches"] = check_result.has_mismatches
             result["quality_checks"]["mismatch_counter"] = check_result.mismatches_counter
             result["quality_checks"]["has_unrecoverable_errors"] = check_result.has_unrecoverable_errors
@@ -233,10 +231,16 @@ if __name__ == "__main__":
     #                    help="Status file for this rule: json file for summury analysis")
     parser.add_argument("-o", "--output_filename", dest="output_filename", required=True,
                         help="Name of the output")
-    parser.add_argument("-e", "--n_events", dest="n_events", type=int, default=10000,
-                        help="Number of events in the file (defalut = 10 000)")
-    parser.add_argument("-n", "--rows_to_combine", dest="rows_to_combine", type=int, default=16,
-                        help="Number of raw in the file to be combined under a unique events (default = 16, number of slave board) ")
+    parser.add_argument("-e", "--n_events", dest="n_events", type=int, default=None,
+                        help="Number of events per subrun file "
+                             "(default: raw_files.events_per_subrun from the reconstruction parameters)")
+    parser.add_argument("-n", "--rows_to_combine", dest="rows_to_combine", type=int, default=None,
+                        help="Number of rows in the file to be combined under a unique event "
+                             "(default: electronics.n_boards from the reconstruction parameters)")
+    parser.add_argument("--base-config", dest="base_config", type=Path, default=None,
+                        help="Reconstruction parameters file (default: the one shipped with muraves_lib)")
+    parser.add_argument("--config", dest="config", type=Path, default=None,
+                        help="Optional JSON override merged on top of the reconstruction parameters")
     parser.add_argument("-th", "--num_threads", dest="num_threads", type=int, default=1,
                         help="Number of threads/cores to use for processing (default = 1)")
     args = parser.parse_args()
@@ -266,7 +270,22 @@ if __name__ == "__main__":
         )
     # logging of file_handler are not printed for some reasons.
     from muraves_lib import file_handler
+    from muraves_lib.reco.reco_config import get_reco_config
     import parserer
+
+    # Event layout of the raw files, shared with the reconstruction (ReadEvent.py).
+    reco_config = get_reco_config(args.config, args.base_config)
+    rows_to_combine = (
+        args.rows_to_combine if args.rows_to_combine is not None
+        else int(reco_config["electronics"]["n_boards"])
+    )
+    values_per_board = int(reco_config["read_event"]["n_info_board"])
+    n_events = (
+        args.n_events if args.n_events is not None
+        else int(reco_config["raw_files"]["events_per_subrun"])
+    )
+    events_per_run = int(reco_config["raw_files"]["events_per_run"][args.type])
+    logger.info(f"Combining {rows_to_combine} rows per event, {values_per_board} values per board")
     # Create a wrapper function to pass run-specific output filename
     def process_run_with_output(run):
         run_output_filename = output_filename_path / Path(f"{output_filename_root}_run{run}.txt")
@@ -280,8 +299,10 @@ if __name__ == "__main__":
                     run=run,
                     rawfile_path=args.raw_data_path,
                     output_filename=str(run_output_filename),
-                    n_events=args.n_events,
-                    rows_to_combine=args.rows_to_combine,
+                    n_events=n_events,
+                    rows_to_combine=rows_to_combine,
+                    values_per_board=values_per_board,
+                    events_per_run=events_per_run,
                 )
         else:
             logger.error(f"Invalid value for overwrite_outputs: {overwrite_outputs}. It should be 'True' or 'False'.")
