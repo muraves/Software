@@ -9,10 +9,9 @@ The main entrypoint is:
 The workflow runs the following stages:
 
 1. Parse raw files (`1_Parser`)
-2. Build pre-reconstruction products (`2_PreRec`)
-3. Compute pedestal products (`3_PedAna`)
-4. Run main reconstruction (`4_MainRecSof`)
-5. Golden selection (`5_GoldenSelection`): keep only the events with a valid 3-plane **and** 4-plane track and write, per run, a flat `Tracks4ptree` (`Track4p_run<N>.root`) ready for physics analysis
+2. Build the telescope pedestal/1phe files from the benchmark calibration files (`3_PedAna/PedestalReader.py`)
+3. Run main reconstruction (`4_MainRecSof`)
+4. Golden selection (`5_GoldenSelection`): keep only the events with a valid 3-plane **and** 4-plane track and write, per run, a flat `Tracks4ptree` (`Track4p_run<N>.root`) ready for physics analysis
 
 ### Shared reconstruction core (`muraves_lib.reco`)
 

@@ -45,8 +45,8 @@ def read_pedestal_file(
     """
     Read a pedestal/1phe file, keeping channels in the same order as in the input file.
 
-    No channel remapping is applied here: OnePhE_evaluator.py's write_results (which
-    produces the reference pedestal_N files) writes channels in plain raw ADC order
+    No channel remapping is applied here: the legacy OnePhE_evaluator.py (now removed), which
+    produced the reference pedestal_N files, wrote channels in plain raw ADC order
     (0..n_channels-1), so this function preserves that same order rather than
     reordering through the spiroc-hybrid-map.cfg strip mapping. This beacuse the re-ordering
     is done at reconstruction level.
@@ -135,7 +135,7 @@ def read_pedestal_file(
         if onephe_is_nan[channel]:
             raw_onephes[channel] = onephe_avg
 
-    # No reordering: keep raw file order, consistent with OnePhE_evaluator.py's write_results
+    # No reordering: keep raw file order, consistent with the legacy OnePhE_evaluator.py output
     return PedestalStruct(
         channel_numbers=raw_channels,
         pedestal_values=raw_pedestals,
@@ -150,7 +150,7 @@ def write_pedestal_file(
     board_idx: int = 0,
 ) -> None:
     """
-    Write pedestal data to file in the format produced by OnePhE_evaluator.write_results.
+    Write pedestal data to file in the format of the legacy OnePhE_evaluator.py output (now removed).
 
     Values that were NaN in the source file (flag==1) have already been replaced
     with the average of the other valid values in that file by read_pedestal_file;

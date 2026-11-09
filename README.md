@@ -176,13 +176,11 @@ python script_Preanalysis.py <start_run> <end_run>
 <span style="color:yellow">**NB:** </span> The number of board was set to 12, why?  I brought it to 16.
 
 ### Pedestal analysis
-Pedestal analysis can be run by using two scripts that do the same thing: computes the value on 1phe.
+Pedestal analysis can be run with the legacy C++ script, which computes the 1phe values (the Python port `OnePhE_evaluator.py` has been removed: the workflow now uses the benchmark 1phe files, see `muraves/tracks_reconstruction/3_PedAna/PedestalReader.py`).
 - `OnePhe_evaluator.cpp`
   - Generate a configuration file for each board. Each of the script has 31 channel values and their corrispondend pedestal and 1phe values.
   - Genetare a root file with SLOWCONTROL information  such as temperature, WorkingPOint, TriggerRate, ..., and the values of pedestal and 1phe for each board.
   - Generate a root file with canvas having all the ADC histogram. They are grouped by board.
-- `OnePhe_evaluator.py`
-  - Generate a configuration file for each board. Each of the script has 31 channel values and their corrispondend pedestal and 1phe values.
   
 #### Using `OnePhe_evaluator.cpp`
 -   Generate executable by running: 
@@ -199,16 +197,6 @@ In my case I had to do a few modification in order to be able to run the script 
 -   :warning: Found internal **unconsistency** of the name of the tree of the PreAnalysed data: PreAnalysis saves it as `ped_tree`, the script searches as `PEDtree`.
 -   :warning: **Suboptimal for debugging** the name of the tree is repeated several time instead of defining a variable.
 
-
-#### Using `OnePhe_evaluator.py`
-- Run the following command:
-  ``` bash
-  python OnePhE_evaluator.py <color> <number_of_runs> <delta_around_central_runID> <central_runID>
-  ```
-  *e.g.* running the pedestal analysis for one run only of the ROSSO hodoscope
-  ``` bash
-  python OnePhE_evaluator.py ROSSO 1 0 15012
-  ```
 
 ### Main Reconstruction: `MURAVES_reco_v2.cpp`.
 In order to run the main reconstruction run the following command to compile the `.cpp` and create the executable:
