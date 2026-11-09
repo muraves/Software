@@ -9,11 +9,16 @@ from typing import Sequence
 import numpy as np
 
 from SearchFileName import Search_File
-from ClusterLists import CreateClusterList, DeterministicSmearingRNG
-from Evaluate_Angular_Coordinates import TrackAngularCoordinates
 from ReadEvent import ReadEvent
-from Tracking import MakeTracks
-from reco_config import get_reco_config, resolve_first_existing, set_runtime_config_path
+from muraves_lib.reco.cluster_lists import CreateClusterList, DeterministicSmearingRNG
+from muraves_lib.reco.angular_coordinates import TrackAngularCoordinates
+from muraves_lib.reco.tracking import MakeTracks
+from muraves_lib.reco.reco_config import (
+    PACKAGE_CONFIG_PATH,
+    get_reco_config,
+    resolve_first_existing,
+    set_runtime_config_path,
+)
 
 from muraves_lib import file_handler, root_wrapper
 from multiprocessing import Pool
@@ -498,6 +503,9 @@ def write_root_outputs(
     all_config_files = list(config_files) if config_files else []
     if reco_config_file is not None:
         all_config_files.append(reco_config_file)
+    # The same file can be listed twice (e.g. the packaged reco parameters passed
+    # explicitly as --base-config): keep each file once in the metadata.
+    all_config_files = list({Path(f).resolve(): Path(f) for f in all_config_files}.values())
 
     # Metadata must be appended to the scratch tmp_path (local disk) while it is
     # still open under temp_to_output, before that context manager copies the
@@ -597,8 +605,10 @@ def run_reconstruction(
     proximity_cut_xy = proximity_multiplier * sigma_y # from C++ comment: "point-trackcandidate distance requirement"
 
     # CONSTANT PARAMETERS
-    n_boards = int(reco_cfg["n_boards"])
-    n_channels = int(reco_cfg["n_channels"])
+    electronics_cfg = cfg["electronics"]
+    n_boards = int(electronics_cfg["n_boards"])
+    n_channels = int(electronics_cfg["n_channels"])
+    strips_cfg = cfg["strips"]
     cluster_lists_cfg = cfg["cluster_lists"]
     read_events_cfg = cfg["read_event"]
     tracking_cfg = cfg["tracking"]
@@ -725,7 +735,7 @@ def run_reconstruction(
         for event in adc_handle:
             ev += 1
 
-            event_info = ReadEvent(event, sorted_channels, events_cfg=read_events_cfg)
+            event_info = ReadEvent(event, sorted_channels, events_cfg=read_events_cfg, electronics_cfg=electronics_cfg)
             timestamp = event_info.timeStamp
 
             if first_timestamp is None:
@@ -892,6 +902,7 @@ def run_reconstruction(
                 _safe_get(trigger_mask_strips, 1),
                 smearing_rng=smearing_rng,
                 cluster_cfg=cluster_lists_cfg,
+                strips_cfg=strips_cfg,
             )
             results_p2x = CreateClusterList(
                 deposits_p2x,
@@ -905,6 +916,7 @@ def run_reconstruction(
                 _safe_get(trigger_mask_strips, 5),
                 smearing_rng=smearing_rng,
                 cluster_cfg=cluster_lists_cfg,
+                strips_cfg=strips_cfg,
             )
             results_p3x = CreateClusterList(
                 deposits_p3x,
@@ -918,6 +930,7 @@ def run_reconstruction(
                 _safe_get(trigger_mask_strips, 9),
                 smearing_rng=smearing_rng,
                 cluster_cfg=cluster_lists_cfg,
+                strips_cfg=strips_cfg,
             )
             results_p4x = CreateClusterList(
                 deposits_p4x,
@@ -931,6 +944,7 @@ def run_reconstruction(
                 _safe_get(trigger_mask_strips, 13),
                 smearing_rng=smearing_rng,
                 cluster_cfg=cluster_lists_cfg,
+                strips_cfg=strips_cfg,
             )
 
             results_p1y = CreateClusterList(
@@ -945,6 +959,7 @@ def run_reconstruction(
                 _safe_get(trigger_mask_strips, 2),
                 smearing_rng=smearing_rng,
                 cluster_cfg=cluster_lists_cfg,
+                strips_cfg=strips_cfg,
             )
             results_p2y = CreateClusterList(
                 deposits_p2y,
@@ -958,6 +973,7 @@ def run_reconstruction(
                 _safe_get(trigger_mask_strips, 6),
                 smearing_rng=smearing_rng,
                 cluster_cfg=cluster_lists_cfg,
+                strips_cfg=strips_cfg,
             )
             results_p3y = CreateClusterList(
                 deposits_p3y,
@@ -971,6 +987,7 @@ def run_reconstruction(
                 _safe_get(trigger_mask_strips, 10),
                 smearing_rng=smearing_rng,
                 cluster_cfg=cluster_lists_cfg,
+                strips_cfg=strips_cfg,
             )
             results_p4y = CreateClusterList(
                 deposits_p4y,
@@ -984,6 +1001,7 @@ def run_reconstruction(
                 _safe_get(trigger_mask_strips, 14),
                 smearing_rng=smearing_rng,
                 cluster_cfg=cluster_lists_cfg,
+                strips_cfg=strips_cfg,
             )
 
             nclusters_z1 = len(results_p1x.ClustersEnergy)
@@ -1053,7 +1071,8 @@ def run_reconstruction(
                 x_pos,
                 z_add,
                 sigma_z,
-                tracking_cfg=tracking_cfg
+                tracking_cfg=tracking_cfg,
+                strips_cfg=strips_cfg,
             )
             tracks_xy = MakeTracks(
                 results_p1y.ClustersPositions,
@@ -1072,7 +1091,8 @@ def run_reconstruction(
                 x_pos,
                 y_add,
                 sigma_y,
-                tracking_cfg=tracking_cfg
+                tracking_cfg=tracking_cfg,
+                strips_cfg=strips_cfg,
             )
 
             ntracks_3p_xz = len(tracks_xz.intercepts_3p)
@@ -1223,7 +1243,7 @@ def run_reconstruction(
                     # Plane-4 cluster used by the best 4p track. cluster_c4_index_* is a
                     # list[list] that is flattened (without counts) in the ROOT export, so
                     # the selected entry is stored explicitly for downstream steps
-                    # (5_GoldenSelection).
+                    # (4_GoldenSelection).
                     if (
                         track_3p_of_4p_idx_xy < len(tracks_xy.cluster_indices_4)
                         and track_4p_idx_xy < len(tracks_xy.cluster_indices_4[track_3p_of_4p_idx_xy])
@@ -1558,7 +1578,7 @@ def run_reconstruction(
         analyzed_root, run_info_root = write_root_outputs(
             analysis_jsonl=analysis_jsonl,
             mini_summary_json=mini_summary_json,
-            config_files=[spiroc_cfg, telescope_cfg],
+            config_files=[spiroc_cfg, telescope_cfg, PACKAGE_CONFIG_PATH],
             reco_config_file=reco_config_file,
         )
         root_fill_elapsed = max(0.0, time.time() - root_start_wall_time)
@@ -1661,7 +1681,7 @@ def _process_batch_run(
     adc_file = Path(adc_file_str)
     run = _extract_run_number(adc_file)
 
-    # A telescope-level pedestal folder (produced by 3_PedAna/PedestalReader.py) applies to
+    # A telescope-level pedestal folder (produced by 2_PedAna/PedestalReader.py) applies to
     # every run of that telescope, so it takes precedence over the per-run pedestal map.
     if fixed_pedestal_folder is not None:
         pedestal_folder = fixed_pedestal_folder
@@ -1734,7 +1754,7 @@ def parse_args(config_defaults: dict | None = None) -> argparse.Namespace:
         type=Path,
         default=None,
         help="Single telescope-level pedestal folder (containing pedestal_N files) applied to "
-             "every run in the batch, as produced by 3_PedAna/PedestalReader.py. "
+             "every run in the batch, as produced by 2_PedAna/PedestalReader.py. "
              "Mutually exclusive with -p/--pedestal-input-filename.",
     )
     parser.add_argument(
@@ -1789,7 +1809,7 @@ def parse_args(config_defaults: dict | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--progress-every",
         type=int,
-        default=int(config_defaults["reconstruction"]["progress_every_default"]),
+        default=int(config_defaults["data_runtime"]["progress_every_default"]),
         help="Print progress every N events within each run (set 0 to disable).",
     )
     parser.add_argument(

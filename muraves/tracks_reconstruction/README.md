@@ -9,10 +9,38 @@ The main entrypoint is:
 The workflow runs the following stages:
 
 1. Parse raw files (`1_Parser`)
-2. Build pre-reconstruction products (`2_PreRec`)
-3. Compute pedestal products (`3_PedAna`)
-4. Run main reconstruction (`4_MainRecSof`)
-5. Golden selection (`5_GoldenSelection`): keep only the events with a valid 3-plane **and** 4-plane track and write, per run, a flat `Tracks4ptree` (`Track4p_run<N>.root`) ready for physics analysis
+2. Build the telescope pedestal/1phe files from the benchmark calibration files (`2_PedAna/PedestalReader.py`)
+3. Run main reconstruction (`3_MainRecSof`)
+4. Golden selection (`4_GoldenSelection`): keep only the events with a valid 3-plane **and** 4-plane track and write, per run, a flat `Tracks4ptree` (`Track4p_run<N>.root`) ready for physics analysis
+
+### Shared reconstruction core (`muraves_lib.reco`)
+
+The reconstruction algorithms that must be identical for data and simulation live in the
+`muraves_lib` package, not in this folder:
+
+| Module | Content |
+|---|---|
+| `muraves_lib/reco/cluster_lists.py` | strip clustering (`CreateClusterList`) |
+| `muraves_lib/reco/tracking.py` | 3-plane / 4-plane track building (`MakeTracks`) |
+| `muraves_lib/reco/angular_coordinates.py` | track angles (`TrackAngularCoordinates`) |
+| `muraves_lib/reco/golden_selector.py` | golden-track definition (`is_golden`) |
+| `muraves_lib/reco/reco_config.py` | configuration loader |
+| `muraves_lib/reco/data/reco_parameters.json` | all reconstruction parameters (detector geometry, clustering, tracking, raw-data format, slow control) |
+
+This folder keeps only what is specific to real data: raw-data reading (`ReadEvent.py`)
+and the Snakemake entry points.
+
+All parameters are in the single file `muraves_lib/reco/data/reco_parameters.json`. JSON has no
+comments, so each section has a `_used_by` entry saying whether the data chain, the simulation
+chain or both read it (keys starting with `_` are documentation only). To change a value for a
+specific processing without touching the shared file, put only that value in a JSON file and set
+it as `execution_config.reco_override_file`: it is merged on top of the shared parameters.
+The override may only use keys that exist in the shared file, in the same section (e.g.
+`{"strips": {"n_strips": 32}}`): a misspelled or misplaced key stops the job with an error
+listing it, instead of being silently ignored.
+
+The Snakefile puts the repository root on `PYTHONPATH`, so jobs always use `muraves_lib` from this
+checkout, even if the container image was built with an older copy of the package.
 
 ## 1) Before you run
 
@@ -94,7 +122,7 @@ Accepted syntax for `batch_idx`:
 
 ### About `type`
 
-This filed isn't necessary for rules (`3_PedAna`) and (`4_MainRecSof`).
+This filed isn't necessary for rules (`2_PedAna`) and (`3_MainRecSof`).
 
 If the input of rule all is the output of the track reconstruction, `Snakefile` resolves the needed data types through rule dependencies (`ADC` and `PIEDISTALLI`).
 The `type` key in `config.yaml` is currently not required by `rule all` in this version.
@@ -216,6 +244,7 @@ A profile is available in this repository `Software/condor_submit/profile/config
     These commands should run succesfully, without further actions. If this is not the case, please report the bug!
 6. Copy the `.sif` image in your `$HOME` directory. This is the image used in the Snakefile. **NB:** You can also keep it keep it here, but then, remember to modify the path in the snakefile.
 *A dedicated container is preferable as the `muraves_lib` package is direclty built it without istalling it everytime that the container is opened. This is only useful for a developing container.*
+*The Snakefile anyway puts this repository on `PYTHONPATH`, so the jobs import `muraves_lib` from your checkout rather than from the copy built into the image: you don't need to rebuild the image after changing `muraves_lib`.*
 
 7. Once this is done, you're ready to go. Jobs that will be submitted can be checked as follows:
     ```bash
@@ -257,9 +286,9 @@ Tree `Tracks4ptree`, one entry per golden event (`BestTrack_3p_ChiSquare_xz != -
 
 - track: `Theta`, `Phi`, `Scattering_xz/xy`, `ChiSquare_xz/xy` (4 planes), `ChiSquare_3p_xz/xy`
 - for each plane `Z1..Z4`, `Y1..Y4`: `TrackClusterEnergy/Position/Size/Exp_<plane>`, `TrackClusterMax/MinStripEnergy_<plane>`, `ClusterMultriplicity_<plane>` and the clusters not on the track `NonTrackClusterEnergy/Size/Position_<plane>`
-- run: `Run`, `TriggerRate`, `RunDuration`, `WorkingPoint`, `Timestamp` (per-event timestamp of step 4; replaces the C++ `Datetime`)
+- run: `Run`, `TriggerRate`, `RunDuration`, `WorkingPoint`, `Timestamp` (per-event timestamp of step 3; replaces the C++ `Datetime`)
 
-A run without golden events gets an empty `Tracks4ptree`. `5_GoldenSelection/validate_golden_selection.py` cross-checks the output against an independent event loop on the step-4 `.jsonl` (used by the CI).
+A run without golden events gets an empty `Tracks4ptree`. `4_GoldenSelection/validate_golden_selection.py` cross-checks the output against an independent event loop on the step-3 `.jsonl` (used by the CI).
 
 `output_path` is:
 

@@ -11,5 +11,8 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["muraves_lib"]   # i pacchetti che vuoi includere
+packages = ["muraves_lib", "muraves_lib.reco"]   # i pacchetti che vuoi includere
+
+[tool.setuptools.package-data]
+"muraves_lib.reco" = ["data/*.json"]
 

@@ -1,10 +1,6 @@
 configfile: 'config.yaml'
 configfile: '../../tag/requirements.yaml'
 import os
-import multiprocessing
-#from muraves_lib import snakefile_helper
-# IMPROVEMENTS:
-# The number of boards and channel should go in another configuration file
 # ******************** Funzioni helper  ********************
 #Function to convert runs of config file to list of runs
 def parse_runs(run_str):
@@ -43,18 +39,48 @@ def parse_batch_indices(batch_string):
     return sorted(set(batch_list))  # Rimuove duplicati e ordina
 
 
+# Make every job import muraves_lib (including the shared reconstruction core,
+# muraves_lib.reco) from this repository checkout, not from the copy baked into the
+# container at build time, so data and simulation always run the same code.
+# The workflow is run from muraves/tracks_reconstruction, so the repository root is ../..
+shell.prefix('set -euo pipefail; export PYTHONPATH="$(cd ../.. && pwd)${{PYTHONPATH:+:$PYTHONPATH}}"; ')
+
 #>>>>>~~~~~~~~~~~~~~~~~~ GLOBAL PARAMETERS  ~~~~~~~~~~~~~~~~~~~
 PNFS = config['data_path']
 HOME = os.path.expandvars('/user/abiolchi/muraves_outputs')
 BATCH_SIZE = config['batch_size'] 
 THREADS = config['threads']
 EXEC_CFG = config.get('execution_config', {})
-RECO_PARAMETERS_FILE = EXEC_CFG.get('reco_parameters_file', 'muraves_cfg_files/reco_parameters.json')
+RECO_PARAMETERS_FILE = EXEC_CFG.get('reco_parameters_file', '../../muraves_lib/reco/data/reco_parameters.json')
 RECO_OVERRIDE_FILE = EXEC_CFG.get('reco_override_file', '')
 SPIROC_MAPPING_FILE = EXEC_CFG.get('spiroc_mapping_file', 'muraves_cfg_files/spiroc-hybrid-map.cfg')
 TELESCOPE_CFG_TEMPLATE = EXEC_CFG.get('telescope_cfg_template', 'muraves_cfg_files/telescope{color}.cfg')
 PEDESTAL_BENCHMARK_TEMPLATE = EXEC_CFG.get('pedestal_benchmark_template', 'muraves_cfg_files/pedestal_1phe_values/{color}_PED_BANCHMARK')
 SELECTED_RECO_CONFIG = RECO_OVERRIDE_FILE if RECO_OVERRIDE_FILE else RECO_PARAMETERS_FILE
+
+# Reconstruction parameters (same file and same merge rule as muraves_lib.reco.reco_config,
+# which cannot be imported here: the Snakemake submission environment does not have muraves_lib).
+def _deep_merge(base, override):
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+def load_reco_parameters():
+    import json
+    with open(RECO_PARAMETERS_FILE) as handle:
+        parameters = json.load(handle)
+    if RECO_OVERRIDE_FILE:
+        with open(RECO_OVERRIDE_FILE) as handle:
+            parameters = _deep_merge(parameters, json.load(handle))
+    return parameters
+
+RECO_PARAMETERS = load_reco_parameters()
+N_BOARDS = int(RECO_PARAMETERS['electronics']['n_boards'])
+N_CHANNELS = int(RECO_PARAMETERS['electronics']['n_channels'])
 CLUSTER_SMEARING_SEED = config.get('cluster_smearing_seed', None)
 SLOW_CONTROL_PREFIX = config.get('slow_control_prefix', 'SLOWCONTROL_run')
 if config['run']:
@@ -87,83 +113,41 @@ rule parse_batch:
     threads: THREADS
     container: '/user/abiolchi/muraves-sing.sif'
     input:
-        script="1_Parser/prep.py"
+        script="1_Parser/prep.py",
+        reco_parameters = RECO_PARAMETERS_FILE,
     params:
         raw_data_path=f'{PNFS}/RAW_GZ/{{color}}',
         runs=lambda wildcards:
             ( BATCHES[int(wildcards.batch_idx)] if config.get('run')
                 else list(range(int(wildcards.batch_idx) * BATCH_SIZE, int(wildcards.batch_idx) * BATCH_SIZE + BATCH_SIZE))
             ),  
+        reco_config_file = SELECTED_RECO_CONFIG,
     output:
         output_filename="{output_path}/PARSED/{color}/{version}/{type}_batch{batch_idx}.stamp" #Questo output contiene la lista dei file prodotti dal batch, che saranno usati come input per le regole successive.
     shell:
-        "python {input.script} -i {params.raw_data_path} -th {threads} -t {wildcards.type} -r {params.runs} -o {output.output_filename} -l {log_on_console} -v {verbose} -ow {overwrite_outputs}"
-
-# Alice: with the new pedestal reader these two steps are not needed anymore
-#rule prereco:
-#    threads: THREADS
-#    container: '/user/abiolchi/muraves-sing.sif'
-#    input:
-#        script = '2_PreRec/MakePedestalTree.py',
-#        input_filename = "{output_path}/PARSED/{color}/{version}/{type}_batch{batch_idx}.stamp"
-#    params:
-#        nBoards = 16,
-#        nInfoBoard = 39,
-#        nChannels= 32
-#    output:
-#        output_filename = "{output_path}/PRERECONSTRUCTED/{color}/{version}/{type}_batch{batch_idx}.stamp"
-#    shell: "python {input.script} -i {input.input_filename} -info {params.nBoards} {params.nInfoBoard} {params.nChannels} -o {output.output_filename} -th {threads} -l {log_on_console} -v {verbose} -ow {overwrite_outputs}"
-#
-#
-#
-#rule pedestal_analysis:
-#    threads: THREADS
-#    container: '/user/abiolchi/muraves-sing.sif'
-#    input:
-#        script = '3_PedAna/OnePhE_evaluator.py',
-#        input_filename = '{output_path}/PRERECONSTRUCTED/{color}/{version}/PIEDISTALLI_batch{batch_idx}.stamp'
-#    params: # to be removed at next version
-#        nBoards = 16,
-#        nInfoBoard = 39,
-#        nChannels= 32,
-#        overwrite_outputs = "True"
-#
-#    #    number_of_runs = 1
-#    #    delta_around_central_runID = 0
-#    output:
-#        output_filename = "{output_path}/PEDESTAL/{color}/{version}/PIEDISTALLI_batch{batch_idx}.stamp",
-#        #sub_files = 
-#        #expand(
-#        #    "{{output_path}}/PEDESTAL/{{color}}/{{version}}/{run}/pedestal_{n}.cfg", run = lambda wildcards:
-#        #    ( BATCHES[int(wildcards.batch_idx)] if config.get('run')
-#        #        else list(range(int(batch_idx) * BATCH_SIZE, int(wildcards.batch_idx) * BATCH_SIZE + BATCH_SIZE))
-#        #    ),   n = range(16)
-#        #) ##NB: CONS--> these subruns will remain silents, the success has to be checks through logs 
-#    shell: "python {input.script} -i {input.input_filename} -info {params.nBoards} {params.nInfoBoard} {params.nChannels} -o {output.output_filename} -th {threads} -l {log_on_console} -v {verbose} -ow {params.overwrite_outputs}"
-
-
+        "python {input.script} -i {params.raw_data_path} -th {threads} -t {wildcards.type} -r {params.runs} --base-config {input.reco_parameters} --config {params.reco_config_file} -o {output.output_filename} -l {log_on_console} -v {verbose} -ow {overwrite_outputs}"
 
 # Telescope-level 1phe calibration: all runs of a telescope share the same pedestal_N files,
 # derived once from the benchmark ped_onephe_sk*.txt files shipped with the repo.
-# This replaces the per-run `pedestal_analysis` rule in the reconstruction chain, so runs
-# no longer need the PIEDISTALLI parse/prereco/pedestal_analysis steps.
 rule pedestal_reader:
     container: '/user/abiolchi/muraves-sing.sif'
     input:
-        script = '3_PedAna/PedestalReader.py',
+        script = '2_PedAna/PedestalReader.py',
         benchmark_files = lambda wildcards: expand(
             PEDESTAL_BENCHMARK_TEMPLATE.format(color=wildcards.color) + '/ped_onephe_sk{n}.txt',
-            n=range(1, 17)
-        )
+            n=range(1, N_BOARDS + 1)
+        ),
+        reco_parameters = RECO_PARAMETERS_FILE,
     params:
         benchmark_dir = lambda wildcards: PEDESTAL_BENCHMARK_TEMPLATE.format(color=wildcards.color),
         output_base = lambda wildcards: f'{wildcards.output_path}/PEDESTAL/{wildcards.color}/{wildcards.version}',
-        nBoards = 16,
-        nChannels = 32
+        nBoards = N_BOARDS,
+        nChannels = N_CHANNELS,
+        reco_config_file = SELECTED_RECO_CONFIG,
     output:
         stamp = '{output_path}/PEDESTAL/{color}/{version}/PEDESTAL_BENCHMARK_{color}.stamp',
         pedestal_files = expand(
-            '{{output_path}}/PEDESTAL/{{color}}/{{version}}/{{color}}/pedestal_{n}', n=range(16)
+            '{{output_path}}/PEDESTAL/{{color}}/{{version}}/{{color}}/pedestal_{n}', n=range(N_BOARDS)
         )
     shell:
         "python {input.script} "
@@ -172,6 +156,8 @@ rule pedestal_reader:
         "--telescope {wildcards.color} "
         "--num-boards {params.nBoards} "
         "--num-channels {params.nChannels} "
+        "--base-config {input.reco_parameters} "
+        "--config {params.reco_config_file} "
         "--stamp-file {output.stamp}"
 
 
@@ -179,7 +165,7 @@ rule analyse:
     threads: THREADS
     container: '/user/abiolchi/muraves-sing.sif'
     input:
-        script = "4_MainRecSof/MURAVES_reco.py",
+        script = "3_MainRecSof/MURAVES_reco.py",
         data_file = '{output_path}/PARSED/{color}/{version}/ADC_batch{batch_idx}.stamp',
         one_phe_files = "{output_path}/PEDESTAL/{color}/{version}/PEDESTAL_BENCHMARK_{color}.stamp",
         reco_parameters = RECO_PARAMETERS_FILE,
@@ -226,7 +212,7 @@ rule golden_selection:
     threads: THREADS
     container: '/user/abiolchi/muraves-sing.sif'
     input:
-        script = '5_GoldenSelection/golden_selection.py',
+        script = '4_GoldenSelection/golden_selection.py',
         reconstructed = '{output_path}/RECONSTRUCTED/{color}/{version}/MURAVES_AnalyzedData_batch{batch_idx}.stamp'
     output:
         output_filename = '{output_path}/GOLDEN_SELECTION/{color}/{version}/Track4p_batch{batch_idx}.stamp'
@@ -238,20 +224,3 @@ rule golden_selection:
         "-l {log_on_console} "
         "-v {verbose} "
         "-ow {overwrite_outputs}"
-
-
-# Not used anymore
-#rule stageout:
-#    input:
-#        lambda wildcards: os.path.join(SCRATCH, wildcards.subpath)
-#    output:
-#        os.path.join(PNFS, "{subpath}")
-#    shell:
-#        """
-#        rsync -av {input} {output} &&
-#        rm {input}
-#        """
-
-
-
-

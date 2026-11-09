@@ -4,8 +4,46 @@ from typing import NamedTuple, List
 from collections import Counter
 
 
+def trigger_mask_string(h1: int, h2: int) -> str:
+    """Channels that fired, e.g. '_31_4_', from the two 16-bit trigger mask words."""
+    tm = '_'
+    for i, bit in enumerate(f'{h1:016b}'):
+        if bit == '1':
+            tm += f'{31 - i}_'
+    for i, bit in enumerate(f'{h2:016b}'):
+        if bit == '1':
+            tm += f'{15 - i}_'
+    return tm
 
-def parser_new(fileoutp, eventsTot, run, subrun, numEVT, numSk, color):
+
+def parse_board_row(r: List[str]) -> List[str]:
+    """Convert one raw board row (tab-separated hex fields) to the values of that
+    board in the parsed event line.
+
+    The column layout is the one written by the board electronics, so it is fixed
+    here; the number of returned values must match read_event.n_info_board, which
+    ReadEvent uses to read the parsed line back.
+    """
+    values = [
+        str(int(r[1][2:], 16)),
+        r[0],  # board index
+        str(int(r[2], 16)),
+    ]
+    for i in range(3, 34):
+        values.append(str(int(r[i][1:] if i <= 17 else r[i][2:], 16)))
+    values += [
+        r[40].replace('\n', ''),
+        str(int(r[36], 16)),
+        str(int(r[37], 16)),
+        str(int(r[38][1:], 16)),
+        trigger_mask_string(int(r[34], 16), int(r[35], 16)),
+    ]
+    return values
+
+
+def parser_new(fileoutp, eventsTot, run, subrun, numEVT, numSk, color, values_per_board):
+    # numSk: raw-file rows (one per slave board) combined into one event (electronics.n_boards)
+    # values_per_board: values written per board in the parsed event line (read_event.n_info_board)
     eventsTot = int(eventsTot)
     run = int(run) - 1
     subrun = int(subrun) - 1
@@ -41,11 +79,14 @@ def parser_new(fileoutp, eventsTot, run, subrun, numEVT, numSk, color):
             CK = 0
         logging.debug("\n-----" + str(linecounter) + "-----\n")
         lines = open(fileoutp, 'r').readlines()
-        rr = lines[160000].split('\t')
-        if (rr[0] == '15') :
-            if ((linecounter-2) > 160000):
-                for i in range(160001, linecounter-1):
-                    del lines[160001]
+        # Line 0 is a timestamp, followed by numEVT events of numSk rows (one per board,
+        # first field = board index): the last expected row is the last board of the last event.
+        last_row = int(numEVT) * int(numSk)
+        rr = lines[last_row].split('\t')
+        if (rr[0] == str(int(numSk) - 1)) :
+            if ((linecounter-2) > last_row):
+                for i in range(last_row + 1, linecounter-1):
+                    del lines[last_row + 1]
                 open(fileoutp, 'w').writelines(lines)
         else :
             CK = 1
@@ -58,7 +99,7 @@ def parser_new(fileoutp, eventsTot, run, subrun, numEVT, numSk, color):
             condition = (CK == 0) and  ((linecounter-2)%int(numSk) == 0)
 
         if condition == True:
-            linecounter =160002
+            linecounter = last_row + 2  # header timestamp + all board rows + closing timestamp
             inputF = open(fileoutp, 'r')
             ss = inputF.readlines()
             inputF.close()
@@ -104,73 +145,28 @@ def parser_new(fileoutp, eventsTot, run, subrun, numEVT, numSk, color):
             #inputF = open(fileoutp, 'r')
                 
                 #print(f'Processing file: {mod}')
-                offset = 0
                 trigger = 0
-                # s = inputF.readline()
-                p=['']* (int(numSk) * 40)
-                #for i in range(int(numSk)*40):
-                #    p.append('')
+                event_values = []
+                boards_in_event = 0
                 expected_triggers = (linecounter - 2) // int(numSk)
-                #print(f'Reading timestamp to skip', temp_file.readline())
                 with tempfile.NamedTemporaryFile(mode='w+', dir="/tmp", delete=False) as temp_outputfile:
                     for s in temp_file:
-                        r = s.split('\t')
-                        #import pdb; pdb.set_trace()
-                        # --- parsing / conversion logic ---
-                        h = int('0x'+r[1][2:], 16)
+                        board_values = parse_board_row(s.split('\t'))
+                        if len(board_values) != values_per_board:
+                            raise ValueError(
+                                f"The parser produces {len(board_values)} values per board, "
+                                f"but read_event.n_info_board is {values_per_board}"
+                            )
+                        event_values.extend(board_values)
+                        boards_in_event += 1
 
-                        p[0+39*offset] = str(h)
-                        p[1+39*offset] = r[0]                   
-                        h = int('0x'+r[2], 16)
-                        p[2+39*offset] = str(h)
-                        for i in range (3, 34):
-                            if (i <= 17):
-                                h = int('0x'+r[i][1:], 16)
-                                p[i+39*offset] = str(h)
-                            else :
-                                h = int('0x'+r[i][2:], 16)
-                                p[i+39*offset] = str(h)
-
-                        p[34+39*offset] = r[40].replace('\n', '')
-                        h = int('0x'+r[36], 16)
-                        p[35+39*offset] = str(h)
-                        h = int('0x'+r[37], 16)
-                        p[36+39*offset] = str(h)
-                        h = int('0x'+r[38][1:], 16)
-                        p[37+39*offset] = str(h)
-                        h1 = int('0x'+r[34], 16)
-                        h2 = int('0x'+r[35], 16)
-                        w1 = '{0:b}'.format(h1)
-                        w2 = '{0:b}'.format(h2)
-                        wh1 = ''
-                        wh2 = ''
-
-                        for i in range(16-len(w1)):
-                            wh1 = wh1 + '0'
-                        for i in range(16-len(w2)):
-                            wh2 = wh2 + '0'
-                        w1 = wh1 + w1
-                        w2 = wh2 + w2
-                        tm = '_'
-                        for i in range(len(w1)):
-                            if(w1[i] == '1'):
-                                tm = tm + str(31 - i) + '_'
-                        for i in range(len(w2)):
-                            if(w2[i] == '1'):
-                                tm = tm + str(15 - i) + '_'
-
-                        p[38+39*offset] = tm
-
-                        if (offset < int(numSk)-1) :
-                            offset += 1
-                        else :
-                            temp_outputfile.write(str(triggerTot) + '\t')
-                            temp_outputfile.write('\t'.join(p[:int(numSk)*39]) + '\n')
-                            offset = 0
+                        if boards_in_event == int(numSk):
+                            temp_outputfile.write(str(triggerTot) + '\t' + '\t'.join(event_values) + '\n')
+                            event_values = []
+                            boards_in_event = 0
                             trigger += 1
                             triggerTot += 1
 
-                        
                         if trigger >= expected_triggers:
                             break
                     #if (trigger==(linecounter-2)/int(numSk)) :
@@ -231,7 +227,7 @@ def insertion_test(a: int, b: int) -> bool:
 
     return False
 
-def check_subevent_number_spacing(file_obj, block_size=39, line_to_print=100) -> ValidationResult:
+def check_subevent_number_spacing(file_obj, block_size, line_to_print=100) -> ValidationResult:
     """
     Validates that event numbers repeat every `block_size` tokens in a file object.
     
@@ -241,7 +237,7 @@ def check_subevent_number_spacing(file_obj, block_size=39, line_to_print=100) ->
 
     Args:
         file_obj: File-like object to validate.
-        block_size: Expected spacing between event numbers (default: 39).
+        block_size: Expected spacing between event numbers (values per board, read_event.n_info_board).
         line_to_print: Line number for debug logging (default: 100).
 
     Returns:

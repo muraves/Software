@@ -1,0 +1,128 @@
+{
+  "_about": "MURAVES reconstruction parameters, shared by the data (muraves/tracks_reconstruction) and simulation chains. JSON has no comments: each section states in '_used_by' which chain reads it. Keys starting with '_' are documentation and are ignored by the code.",
+  "detector_geometry": {
+    "_used_by": "data, simulation",
+    "_note": "Plane positions per telescope: z_add (vertical offsets) and x_pos (plane distances).",
+    "ROSSO": {
+      "z_add": [
+        0.292,
+        0.251,
+        0.207,
+        0.0
+      ],
+      "x_pos": [
+        -0.265,
+        0.0,
+        0.262,
+        1.475
+      ]
+    },
+    "NERO": {
+      "z_add": [
+        0.293,
+        0.251,
+        0.21,
+        0.0
+      ],
+      "x_pos": [
+        -0.26,
+        0.0,
+        0.262,
+        1.492
+      ]
+    },
+    "BLU": {
+      "z_add": [
+        0.2712,
+        0.2312,
+        0.1892,
+        0.0
+      ],
+      "x_pos": [
+        -0.26,
+        0.0,
+        0.262,
+        1.492
+      ]
+    }
+  },
+  "reconstruction": {
+    "_used_by": "data, simulation",
+    "y_add": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "sigma_z": 0.004,
+    "sigma_y": 0.0035,
+    "cluster_thresholds": {
+      "s1": 6.0,
+      "s2": 10.0,
+      "s3": 2.0
+    },
+    "proximity_sigma_multiplier": 5.0
+  },
+  "strips": {
+    "_used_by": "data, simulation",
+    "_note": "Strip geometry of one plane: position of the first strip, strip pitch and number of strips.",
+    "first_strip_pos": -0.528,
+    "adjacent_strips_distance": 0.0165,
+    "n_strips": 64
+  },
+  "cluster_lists": {
+    "_used_by": "data, simulation",
+    "max_strip_energy": 3000.0,
+    "min_energy_trigger_mask": 20.0,
+    "split_board_index": 32,
+    "single_strip_smearing_scale": 1000
+  },
+  "tracking": {
+    "_used_by": "data, simulation",
+    "scattering_pi": 3.14159
+  },
+  "electronics": {
+    "_used_by": "data only",
+    "_note": "Readout electronics: number of boards and channels per board.",
+    "n_boards": 16,
+    "n_channels": 32
+  },
+  "raw_files": {
+    "_used_by": "data only",
+    "_note": "Raw run files: number of events per run for each data type (also part of the raw file names, e.g. slaveData_evts40000_run2500_sr1.gz) and number of events per subrun file.",
+    "events_per_run": {
+      "ADC": 40000,
+      "PIEDISTALLI": 50000
+    },
+    "events_per_subrun": 10000
+  },
+  "read_event": {
+    "_used_by": "data only",
+    "_note": "Column layout of the raw ADC text files.",
+    "n_info_board": 39,
+    "time_stamp_index": 35,
+    "time_exp_offset": 37,
+    "trigger_mask_offset": 39,
+    "adc_offset": 3,
+    "trigger_mask_separator": "_"
+  },
+  "pedestals": {
+    "_used_by": "data only",
+    "_note": "Calibration files: 1phe value used for a channel whose 1phe is 0 in the benchmark file (the channel is flagged).",
+    "zero_onephe_replacement": 1000.0
+  },
+  "slow_control": {
+    "_used_by": "data only",
+    "_note": "Column layout of the SLOWCONTROL files.",
+    "delimiter": "\t",
+    "minimum_fields": 44,
+    "run_index": 0,
+    "trigger_rate_index": 43,
+    "temperature_index": 3,
+    "working_point_index": 5
+  },
+  "data_runtime": {
+    "_used_by": "data only",
+    "_note": "Command-line defaults of MURAVES_reco.py.",
+    "progress_every_default": 1000
+  }
+}

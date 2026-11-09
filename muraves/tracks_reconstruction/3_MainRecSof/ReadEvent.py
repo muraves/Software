@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Sequence
 
-from reco_config import get_reco_config
+from muraves_lib.reco.reco_config import get_reco_config
 
 
 @dataclass
@@ -23,14 +23,20 @@ def _safe_float(value: str, default: float = 0.0) -> float:
         return default
 
 
-def ReadEvent(ADCline: str, stripIndices: Sequence[int], events_cfg: dict | None = None,) -> EventStruct:
+def ReadEvent(
+    ADCline: str,
+    stripIndices: Sequence[int],
+    events_cfg: dict | None = None,
+    electronics_cfg: dict | None = None,
+) -> EventStruct:
     """Python port of ReadEvent from ReadEvent.cc."""
     adcdata_splitted = ADCline.rstrip("\n").split("\t")
 
     cfg = events_cfg if events_cfg is not None else get_reco_config()["read_event"]
+    electronics = electronics_cfg if electronics_cfg is not None else get_reco_config()["electronics"]
     n_info_board = int(cfg["n_info_board"])
-    n_channels = int(cfg["n_channels"])
-    n_boards = int(cfg["n_boards"])
+    n_channels = int(electronics["n_channels"])
+    n_boards = int(electronics["n_boards"])
     time_stamp_index = int(cfg["time_stamp_index"])
     time_exp_offset = int(cfg["time_exp_offset"])
     trigger_mask_offset = int(cfg["trigger_mask_offset"])

@@ -1,38 +1,39 @@
-# 4_MainRecSof Pythonized Modules
+# 3_MainRecSof Pythonized Modules
 
 This folder now includes Python ports of the core C++ reconstruction modules.
 
-## Added Python Files
+## Python Files
 
-- `cluster_lists.py` (`CreateClusterList`, `ClusterPosition`, `ClusterEnergy`, `SortIndices`)
-- `evaluate_angular_coordinates.py` (`TrackAngularCoordinates`)
-- `read_event.py` (`ReadEvent`)
-- `tracking.py` (`MakeTracks`)
-- `MURAVES_reco_v2.py` (Python entrypoint)
+The core reconstruction modules are shared with the simulation chain and live in the
+`muraves_lib.reco` package (see `../README.md`):
 
-Compatibility wrappers with legacy names are also provided:
+- `muraves_lib/reco/cluster_lists.py` (`CreateClusterList`)
+- `muraves_lib/reco/angular_coordinates.py` (`TrackAngularCoordinates`)
+- `muraves_lib/reco/tracking.py` (`MakeTracks`)
+- `muraves_lib/reco/reco_config.py` (configuration loader)
 
-- `ClusterLists.py`
-- `EvaluateAngularCoordinates.py`
-- `ReadEvent.py`
-- `Tracking.py`
+Data-specific modules kept in this folder:
+
+- `ReadEvent.py` (`ReadEvent`)
+- `SearchFileName.py`
+- `MURAVES_reco.py` (Python entrypoint)
 
 ## Entrypoint
 
 ```bash
-python 4_MainRecSof/MURAVES_reco_v2.py <COLOR> <RUN>
+python 3_MainRecSof/MURAVES_reco_v2.py <COLOR> <RUN>
 ```
 
 Example:
 
 ```bash
-python 4_MainRecSof/MURAVES_reco_v2.py BLU 2512
+python 3_MainRecSof/MURAVES_reco_v2.py BLU 2512
 ```
 
 Optional path overrides:
 
 ```bash
-python 4_MainRecSof/MURAVES_reco_v2.py BLU 2512 \
+python 3_MainRecSof/MURAVES_reco_v2.py BLU 2512 \
   --output-base /workspace/muraves_outputs \
   --raw-base /data/RAW_GZ \
   --tracks-base /workspace/Software/muraves/tracks_reconstruction
@@ -41,19 +42,19 @@ python 4_MainRecSof/MURAVES_reco_v2.py BLU 2512 \
 Optional ROOT export (on demand):
 
 ```bash
-python 4_MainRecSof/MURAVES_reco_v2.py BLU 2512 --write-root
+python 3_MainRecSof/MURAVES_reco_v2.py BLU 2512 --write-root
 ```
 
 Progress logging (prints every 500 events):
 
 ```bash
-python 4_MainRecSof/MURAVES_reco_v2.py NERO 2546 --write-root --progress-every 500
+python 3_MainRecSof/MURAVES_reco_v2.py NERO 2546 --write-root --progress-every 500
 ```
 
 Disable periodic progress logs:
 
 ```bash
-python 4_MainRecSof/MURAVES_reco_v2.py NERO 2546 --progress-every 0
+python 3_MainRecSof/MURAVES_reco_v2.py NERO 2546 --progress-every 0
 ```
 
 Programmatic on-demand export function:

@@ -1,7 +1,7 @@
 """Cross-check golden_selection.py against an independent reference.
 
 The reference is a plain per-event loop that follows
-AnalysisOfCluster_and_tracks4planes.C line by line, reading the step-4 JSONL
+AnalysisOfCluster_and_tracks4planes.C line by line, reading the step-3 JSONL
 output (where the nested lists, e.g. cluster_c4_index_xz[row][candidate] and
 StripsEnergy_Z1[cluster][strip], are still nested). It therefore does not use
 the flattened ROOT branches nor the BestTrack_4p_ClusterIndex_* shortcut that
