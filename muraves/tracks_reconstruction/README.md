@@ -35,6 +35,9 @@ comments, so each section has a `_used_by` entry saying whether the data chain, 
 chain or both read it (keys starting with `_` are documentation only). To change a value for a
 specific processing without touching the shared file, put only that value in a JSON file and set
 it as `execution_config.reco_override_file`: it is merged on top of the shared parameters.
+The override may only use keys that exist in the shared file, in the same section (e.g.
+`{"strips": {"n_strips": 32}}`): a misspelled or misplaced key stops the job with an error
+listing it, instead of being silently ignored.
 
 The Snakefile puts the repository root on `PYTHONPATH`, so jobs always use `muraves_lib` from this
 checkout, even if the container image was built with an older copy of the package.

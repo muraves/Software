@@ -9,6 +9,10 @@ The configuration is built in layers, each one deep-merged on top of the previou
 1. ``data/reco_parameters.json`` (always loaded);
 2. an optional *base* file (by default the data workflow passes the package file itself);
 3. an optional *override* file, for one-off changes.
+
+The base and override files may only contain keys that exist in the package file
+(keys starting with ``_`` are documentation and always allowed): a misspelled key or
+a key in the wrong section raises an error instead of being silently ignored.
 """
 from __future__ import annotations
 
@@ -32,6 +36,38 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
         else:
             merged[key] = value
     return merged
+
+
+def _unknown_keys(layer: dict[str, Any], reference: dict[str, Any], prefix: str = "") -> list[str]:
+    """Keys of ``layer`` that do not exist in ``reference``, as dotted paths.
+
+    A section (dict) given where the reference has a value, or a value given where
+    the reference has a section, is reported too, since merging it would either be
+    ignored or wipe out the whole section.
+    """
+    problems: list[str] = []
+    for key, value in layer.items():
+        if key.startswith("_"):
+            continue
+        path = f"{prefix}{key}"
+        if key not in reference:
+            problems.append(f"'{path}' (unknown key)")
+        elif isinstance(reference[key], dict) != isinstance(value, dict):
+            expected = "a section" if isinstance(reference[key], dict) else "a value"
+            problems.append(f"'{path}' (expected {expected})")
+        elif isinstance(value, dict):
+            problems.extend(_unknown_keys(value, reference[key], prefix=f"{path}."))
+    return problems
+
+
+def _check_layer(layer: dict[str, Any], reference: dict[str, Any], path: Path) -> None:
+    problems = _unknown_keys(layer, reference)
+    if problems:
+        raise ValueError(
+            f"Configuration file {path} has keys that are not reconstruction parameters: "
+            + ", ".join(problems)
+            + f". Valid keys are those of {PACKAGE_CONFIG_PATH}."
+        )
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -80,17 +116,22 @@ def _load_reco_config_cached(
         configured = os.environ.get(RUNTIME_CONFIG_ENV)
         candidate = Path(configured).expanduser().resolve() if configured else None
 
-    config = _load_json(PACKAGE_CONFIG_PATH)
+    package = _load_json(PACKAGE_CONFIG_PATH)
+    config = package
 
     if base_candidate is not None:
         if not base_candidate.exists():
             raise FileNotFoundError(f"Base configuration file not found: {base_candidate}")
-        config = _deep_merge(config, _load_json(base_candidate))
+        base = _load_json(base_candidate)
+        _check_layer(base, package, base_candidate)
+        config = _deep_merge(config, base)
 
     if candidate is not None and candidate != base_candidate:
         if not candidate.exists():
             raise FileNotFoundError(f"Configuration override file not found: {candidate}")
-        config = _deep_merge(config, _load_json(candidate))
+        override = _load_json(candidate)
+        _check_layer(override, package, candidate)
+        config = _deep_merge(config, override)
 
     return config
 
