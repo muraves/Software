@@ -12,6 +12,7 @@ The workflow runs the following stages:
 2. Build pre-reconstruction products (`2_PreRec`)
 3. Compute pedestal products (`3_PedAna`)
 4. Run main reconstruction (`4_MainRecSof`)
+5. Golden selection (`5_GoldenSelection`): keep only the events with a valid 3-plane **and** 4-plane track and write, per run, a flat `Tracks4ptree` (`Track4p_run<N>.root`) ready for physics analysis
 
 ## 1) Before you run
 
@@ -244,8 +245,21 @@ A profile is available in this repository `Software/condor_submit/profile/config
 Final stamp target produced by `rule all`:
 
 ```text
-{output_path}/RECONSTRUCTED/{color}/{version}/MURAVES_AnalyzedData_batch{batch_idx}.stamp
+{output_path}/GOLDEN_SELECTION/{color}/{version}/Track4p_batch{batch_idx}.stamp
 ```
+
+Intermediate outputs of the main reconstruction stay in
+`{output_path}/RECONSTRUCTED/{color}/{version}/` (`MURAVES_AnalyzedData_run<N>.root`, `MURAVES_miniRunTree_run<N>.root`, ...).
+
+### Golden selection output (`Track4p_run<N>.root`)
+
+Tree `Tracks4ptree`, one entry per golden event (`BestTrack_3p_ChiSquare_xz != -1` and `BestTrack_4p_ChiSquare_xz != -1`, as in the original `AnalysisOfCluster_and_tracks4planes.C`). Branch names are the ones of the C++ macro:
+
+- track: `Theta`, `Phi`, `Scattering_xz/xy`, `ChiSquare_xz/xy` (4 planes), `ChiSquare_3p_xz/xy`
+- for each plane `Z1..Z4`, `Y1..Y4`: `TrackClusterEnergy/Position/Size/Exp_<plane>`, `TrackClusterMax/MinStripEnergy_<plane>`, `ClusterMultriplicity_<plane>` and the clusters not on the track `NonTrackClusterEnergy/Size/Position_<plane>`
+- run: `Run`, `TriggerRate`, `RunDuration`, `WorkingPoint`, `Timestamp` (per-event timestamp of step 4; replaces the C++ `Datetime`)
+
+A run without golden events gets an empty `Tracks4ptree`. `5_GoldenSelection/validate_golden_selection.py` cross-checks the output against an independent event loop on the step-4 `.jsonl` (used by the CI).
 
 `output_path` is:
 

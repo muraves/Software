@@ -1149,6 +1149,8 @@ def run_reconstruction(
             track_4p_idx_xz = -1
             best_track_4p_is_texp_null_xy = -1
             best_track_4p_is_texp_null_xz = -1
+            best_track_4p_cluster_idx_xy = -1
+            best_track_4p_cluster_idx_xz = -1
 
             cluster_c4_texp_xz: list[list[float]] = []
             for idx_row, row in enumerate(tracks_xz.cluster_indices_4):
@@ -1217,6 +1219,21 @@ def run_reconstruction(
                     ):
                         best_scattering_angle_xy = tracks_xy.ScatteringAngles[track_3p_of_4p_idx_xy][track_4p_idx_xy]
                         best_scattering_angle_xz = tracks_xz.ScatteringAngles[track_3p_of_4p_idx_xz][track_4p_idx_xz]
+
+                    # Plane-4 cluster used by the best 4p track. cluster_c4_index_* is a
+                    # list[list] that is flattened (without counts) in the ROOT export, so
+                    # the selected entry is stored explicitly for downstream steps
+                    # (5_GoldenSelection).
+                    if (
+                        track_3p_of_4p_idx_xy < len(tracks_xy.cluster_indices_4)
+                        and track_4p_idx_xy < len(tracks_xy.cluster_indices_4[track_3p_of_4p_idx_xy])
+                    ):
+                        best_track_4p_cluster_idx_xy = int(tracks_xy.cluster_indices_4[track_3p_of_4p_idx_xy][track_4p_idx_xy])
+                    if (
+                        track_3p_of_4p_idx_xz < len(tracks_xz.cluster_indices_4)
+                        and track_4p_idx_xz < len(tracks_xz.cluster_indices_4[track_3p_of_4p_idx_xz])
+                    ):
+                        best_track_4p_cluster_idx_xz = int(tracks_xz.cluster_indices_4[track_3p_of_4p_idx_xz][track_4p_idx_xz])
 
                     if (
                         track_3p_of_4p_idx_xy < len(tracks_xy.slope_4p)
@@ -1401,6 +1418,8 @@ def run_reconstruction(
                 "BestTracks_ScatteringAngle_xz": best_scattering_angle_xz,
                 "Best_track_4p_isTexpNULL_xy": best_track_4p_is_texp_null_xy,
                 "Best_track_4p_isTexpNULL_xz": best_track_4p_is_texp_null_xz,
+                "BestTrack_4p_ClusterIndex_xy": best_track_4p_cluster_idx_xy,
+                "BestTrack_4p_ClusterIndex_xz": best_track_4p_cluster_idx_xz,
 
                 "timestamp": timestamp,
                 "WorkingPoint": int(working_point),
@@ -1431,7 +1450,8 @@ def run_reconstruction(
 
     run_duration_min = 0.0
     if first_timestamp is not None and last_timestamp is not None:
-        run_duration_min = max(0.0, (last_timestamp - first_timestamp) / 60.0)
+        # Event timestamps are Unix epoch in milliseconds: ms -> minutes.
+        run_duration_min = max(0.0, (last_timestamp - first_timestamp) / 60000.0)
 
     mean_cluster_energy_z1, rms_cluster_energy_z1 = _mean_rms(cluster_energy_acc["Z1"])
     mean_cluster_energy_z2, rms_cluster_energy_z2 = _mean_rms(cluster_energy_acc["Z2"])
