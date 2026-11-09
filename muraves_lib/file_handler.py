@@ -12,6 +12,20 @@ import time
 
 logger = logging.getLogger(__name__)
 
+# Permissions of the output files: rw-rw-r--, so that everybody in the group
+# (e.g. muravesusers on pnfs) can read and overwrite them. Scratch files made by
+# tempfile.NamedTemporaryFile are always created rw------- (owner only), and
+# shutil.copy2 would propagate that mode to the final output.
+OUTPUT_FILE_MODE = 0o664
+
+
+def _set_output_permissions(path: Path) -> None:
+    """Make an output file group-readable/writable (OUTPUT_FILE_MODE)."""
+    try:
+        os.chmod(path, OUTPUT_FILE_MODE)
+    except OSError as e:
+        logger.warning(f"Could not set permissions {oct(OUTPUT_FILE_MODE)} on {path}: {e}")
+
 def read_run_info_from_json(filename, subdict='slowcontrol') -> dict:
     """
     Reads a JSON file containing run information and extracts:
@@ -347,6 +361,7 @@ def temp_to_output(output_path: Path, success_message= ""):
         #import pdb; pdb.set_trace()
         # Always create output
         shutil.copy2(scratch_tmp, final_tmp)
+        _set_output_permissions(final_tmp)
         _atomic_replace(final_tmp, output_path, retries=10)
         # Always cleanup
         scratch_tmp.unlink(missing_ok=True)
@@ -361,6 +376,7 @@ def copy_on_system(temp_file, final_file):
     try:
         tmp_onsystem = final_file.with_suffix(final_file.suffix + ".tmp")
         shutil.copy2(temp_file, tmp_onsystem)
+        _set_output_permissions(tmp_onsystem)
         _atomic_replace(tmp_onsystem, final_file, retries=10)
         #os.replace(tmp_onsystem, final_file)
     except Exception as e:
