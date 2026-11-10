@@ -47,7 +47,8 @@ shell.prefix('set -euo pipefail; export PYTHONPATH="$(cd ../.. && pwd)${{PYTHONP
 
 #>>>>>~~~~~~~~~~~~~~~~~~ GLOBAL PARAMETERS  ~~~~~~~~~~~~~~~~~~~
 PNFS = config['data_path']
-HOME = os.path.expandvars('/user/abiolchi/muraves_outputs')
+HOME = os.path.expandvars(config.get('home_output_path', '$HOME/muraves_outputs'))
+CONTAINER = config['container']  # Singularity image used by all rules
 BATCH_SIZE = config['batch_size'] 
 THREADS = config['threads']
 EXEC_CFG = config.get('execution_config', {})
@@ -120,7 +121,7 @@ rule all:
 
 rule parse_batch:
     threads: THREADS
-    container: '/user/abiolchi/muraves-sing.sif'
+    container: CONTAINER
     input:
         script="1_Parser/prep.py",
         reco_parameters = RECO_PARAMETERS_FILES,
@@ -139,7 +140,7 @@ rule parse_batch:
 # Telescope-level 1phe calibration: all runs of a telescope share the same pedestal_N files,
 # derived once from the benchmark ped_onephe_sk*.txt files shipped with the repo.
 rule pedestal_reader:
-    container: '/user/abiolchi/muraves-sing.sif'
+    container: CONTAINER
     input:
         script = '2_PedAna/PedestalReader.py',
         benchmark_files = lambda wildcards: expand(
@@ -171,7 +172,7 @@ rule pedestal_reader:
 
 rule analyse:
     threads: THREADS
-    container: '/user/abiolchi/muraves-sing.sif'
+    container: CONTAINER
     input:
         script = "3_MainRecSof/MURAVES_reco.py",
         data_file = '{output_path}/PARSED/{color}/{version}/ADC_batch{batch_idx}.stamp',
@@ -217,7 +218,7 @@ rule analyse:
 # for each run, a flat Tracks4ptree (Track4p_run<N>.root) ready for physics analysis.
 rule golden_selection:
     threads: THREADS
-    container: '/user/abiolchi/muraves-sing.sif'
+    container: CONTAINER
     input:
         script = '4_GoldenSelection/golden_selection.py',
         reconstructed = '{output_path}/RECONSTRUCTED/{color}/{version}/MURAVES_AnalyzedData_batch{batch_idx}.stamp'

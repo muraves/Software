@@ -66,7 +66,18 @@ Inside `muraves_DATA` there are the folders RAW_GZ, PARSED, PEDESTAL, ... . Make
 ### `copy_to_data`
 
 - `True`: final outputs are written under `data_path`
-- `False`: final outputs are written under `$HOME/muraves_outputs`
+- `False`: final outputs are written under `home_output_path`
+
+### `home_output_path`
+
+Where outputs go when `copy_to_data: False`. Default `"$HOME/muraves_outputs"`; environment
+variables are expanded, so each user writes into their own home.
+
+### `container`
+
+Singularity image used by every rule. By default it is the shared image in
+`/group/Muography/MURAVES/container/`: you don't need to change it. See
+[`condor_submit/README.md`](../../condor_submit/README.md#the-container-image).
 
 ### `hodoscope`
 
@@ -198,79 +209,17 @@ Notes:
 
 - Increase `--cores` only if your environment can run multiple jobs safely.
 
-## 4) Run the workflow with Snakemake on htcondor
+## 5) Run the workflow with Snakemake on HTCondor
 
-Snakemake has the possibility to customise profiles to manage jobs submission.
+Setup, submission and the container image used by the jobs are explained in
+[`condor_submit/README.md`](../../condor_submit/README.md). In short, once the profile is set up:
 
-A profile is available in this repository `Software/condor_submit/profile/config.yaml`. 
+```bash
+snakemake --profile <my_profile> -n   # list the jobs
+snakemake --profile <my_profile>      # submit them
+```
 
-1. Create a conda environemt with snakemake inside: `conda create -n <env_name> -c conda-forge -c bioconda -c nodefaults python=3.13.12 "snakemake==9.16.3"`
-  - If you have mamba: `mamba create -n env_name  -c conda-forge -c bioconda -c nodefaults python=3.13.12 "snakemake==9.16.3"` <- This is faster.
-  - If for some reason the pinned versions do not work, you can run this: `conda create -n snakemake_test -c conda-forge -c bioconda -c nodefaults python=3.12 "snakemake>=8”`
-  - **If you don't have conda or mamba installed**: [Please refere to this installation guide](../../environment/README.md#install-miniforge).
-2. In order to manage the submission you need: `pip install htcondor==23.10.29 snakemake-executor-plugin-htcondor==0.1.2`. It is important to pin the versions here because recent releases are not compatible anymore with the T2B htcondor (maybe in the future they will.)
-3. Copy the profile configuration file provided in this GitHub repository `Software/condor_submit/profile/config.yaml`, in you T2B folder `$HOME/.config/snakemake/<my_profile>/.` 
-  - `$HOME` is your home directory when you connect to T2B you can check what it is by running `echo $HOME` on your terminal
-  - You should already have a `.config/` folder in your home, but maybe you need to create a `snakemake` folder and also a folder with the name that you want to assign to the profile.
-4. Test if htcondor works fine within this environment:
-  - Try to run:
-    ```
-    python - <<'EOF'
-    import htcondor2
-
-    print("Creating Schedd...")
-    schedd = htcondor2.Schedd()
-
-    print("SUCCESS!")
-    print(schedd)
-    EOF
-    ```
-    You should get "SUCCESS!". If so you can run also
-    ```
-    python - <<'EOF' 
-    import htcondor2 as htcondor 
-    collector = htcondor.Collector("cm.wn.iihe.ac.be") 
-    ads = collector.query( htcondor.AdType.Schedd, projection=["Name", "MyAddress"] ) 
-    print(f"Found {len(ads)} schedds") 
-    EOF
-    ```
-    You should get the number of schedds.
-    If any of this test fails, it is very likley some version incompatibility with the htcondor installed in the environment and that used by T2B. If everything works fine, you can move on! 
-5. A dedicated container (`.sif` image needs to be created). Please run the command in the following order. 
-
-    ```bash
-    cd Software/condor_submit/container/
-    singularity build muraves-sing.sif muraves-sing.def
-    ```
-    These commands should run succesfully, without further actions. If this is not the case, please report the bug!
-6. Copy the `.sif` image in your `$HOME` directory. This is the image used in the Snakefile. **NB:** You can also keep it keep it here, but then, remember to modify the path in the snakefile.
-*A dedicated container is preferable as the `muraves_lib` package is direclty built it without istalling it everytime that the container is opened. This is only useful for a developing container.*
-*The Snakefile anyway puts this repository on `PYTHONPATH`, so the jobs import `muraves_lib` from your checkout rather than from the copy built into the image: you don't need to rebuild the image after changing `muraves_lib`.*
-
-7. Once this is done, you're ready to go. Jobs that will be submitted can be checked as follows:
-    ```bash
-    snakemake --profile <my_profile> -n
-    ```
-8. The same command without `-n` will actually submit the jobs.
-
-### Environment setup Troubleshooting:
-1. If you have more that one conda environment it can potentially mix up things. I kept seeing this error: 
-
-    ```bash
-    Traceback (most recent call last):
-      File "/user/abiolchi/.config/snakemake/htcondor/grid-submit.py", line 4, in <module>
-        import htcondor
-    ModuleNotFoundError: No module named 'htcondor'
-    ```
-    Cleaning a few conda environment solved this issue.
-
-2. The command `singularity build Software/condor_submit/container/muraves-sing.sif Software/condor_submit/container/muraves-sing.def` rise the following error: 
-    ```
-    New error: INFO: Creating SIF file... FATAL: While performing build: while creating squashfs: /usr/libexec/apptainer/bin/mksquashfs command failed: exit status 139
-    ```
-    Fixed by limiting number of processors used with squashfs: `apptainer build --mksquashfs-args "-processors 4" Software/condor_submit/container/muraves-sing.sif Software/condor_submit/container/muraves-sing.def`
-
-## 5) Where outputs are written
+## 6) Where outputs are written
 
 Final stamp target produced by `rule all`:
 
@@ -296,11 +245,11 @@ A run without golden events (or without any event) gets an empty `Tracks4ptree`.
 `output_path` is:
 
 - `data_path` if `copy_to_data: True`
-- `$HOME/muraves_outputs` if `copy_to_data: False`
+- `home_output_path` (default `$HOME/muraves_outputs`) if `copy_to_data: False`
 
 `version` is read from `../../tag/requirements.yaml`.
 
-## 6) Troubleshooting
+## 7) Troubleshooting
 
 - No jobs selected:
   - check that `run` or `batch_idx` is not empty

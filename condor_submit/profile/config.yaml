@@ -1,4 +1,4 @@
-# where to place it: ~/.config/snakemake/profile/config.yaml
+# Copy this file to ~/.config/snakemake/<my_profile>/config.yaml (see ../README.md).
 
 #jobscript: "grid-jobscript.sh"   # optional, only needed if you want a wrapper for the jobs
 executor: "htcondor"           
@@ -7,10 +7,12 @@ default_resources:
   mem_mb: 3000
   disk_mb: 10000
   runtime: 3600 # 3600s1h, 900s = 15min. 
-htcondor-jobdir: "/user/abiolchi/muraves_outputs"  # directory for htcondor jobs
+htcondor-jobdir: "$HOME/muraves_outputs"  # directory for the htcondor job files (logs, submit files); snakemake expands $HOME
 
 use-singularity: true
-singularity-args: "--cleanenv -B $HOME/Software -B $HOME/muraves_outputs -B /tmp:/workspace/tmp -B /pnfs/iihe/muraves/muraves_DATA" #user $HOME is automatically binded by si
+singularity-args: "--cleanenv -B $HOME/Software -B $HOME/muraves_outputs -B /tmp:/workspace/tmp -B /pnfs/iihe/muraves/muraves_DATA -B /group/Muography/MURAVES"
+# $HOME is bound automatically by singularity. /group/Muography/MURAVES holds the shared image
+# (the image path in config.yaml) and is bound so that jobs can also read or write there.
 
 max-jobs-per-second: 100
 max-status-checks-per-second: 1

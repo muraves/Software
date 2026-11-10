@@ -48,7 +48,7 @@ jobs:
             muraves:latest bash -c \
             "cd muraves/tracks_reconstruction && \
              python -m pip install --quiet pyyaml && \
-             python -c \"import yaml, pathlib; p=pathlib.Path('config.yaml'); c=yaml.safe_load(p.read_text()); c.update({'data_path':'/data','copy_to_data':False,'batch_size':1,'threads':1,'batch_idx':'2500','run':None,'logs_on_console':True,'verbose':'info','overwrite_outputs':False}); p.write_text(yaml.safe_dump(c, sort_keys=False))\" && \
+             python -c \"import yaml, pathlib; p=pathlib.Path('config.yaml'); c=yaml.safe_load(p.read_text()); c.update({'data_path':'/data','copy_to_data':False,'batch_size':1,'threads':1,'batch_idx':'2500','run':None,'logs_on_console':True,'verbose':'info','overwrite_outputs':False,'home_output_path':'/workspace/ci_outputs'}); p.write_text(yaml.safe_dump(c, sort_keys=False))\" && \
              echo '=== Modified config.yaml ===' && \
              cat config.yaml && \
              echo '===Activating conda environment and running Snakemake=== ' && \
@@ -71,7 +71,7 @@ jobs:
              fi && \
              echo '=== Snakemake completed successfully ===' && \
              echo '=== Validating golden selection (step 4) ===' && \
-             OUT=/user/abiolchi/muraves_outputs && \
+             OUT=/workspace/ci_outputs && \
              VERSION=\$(python -c \"import yaml; print(yaml.safe_load(open('../../tag/requirements.yaml'))['version'])\") && \
              GOLDEN_STAMP=\$OUT/GOLDEN_SELECTION/NERO/\$VERSION/Track4p_batch2500.stamp && \
              echo \"Golden stamp: \$GOLDEN_STAMP\" && cat \$GOLDEN_STAMP && \
