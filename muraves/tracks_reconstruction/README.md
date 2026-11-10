@@ -207,7 +207,7 @@ A profile is available in this repository `Software/condor_submit/profile/config
 1. Create a conda environemt with snakemake inside: `conda create -n <env_name> -c conda-forge -c bioconda -c nodefaults python=3.13.12 "snakemake==9.16.3"`
   - If you have mamba: `mamba create -n env_name  -c conda-forge -c bioconda -c nodefaults python=3.13.12 "snakemake==9.16.3"` <- This is faster.
   - If for some reason the pinned versions do not work, you can run this: `conda create -n snakemake_test -c conda-forge -c bioconda -c nodefaults python=3.12 "snakemake>=8”`
-  - **If you don't have conda or mamba installed**: [Please refere to this installation guide](https://github.com/muraves/Software/blob/master/environment/README.md#install).
+  - **If you don't have conda or mamba installed**: [Please refere to this installation guide](../../environment/README.md#install-miniforge).
 2. In order to manage the submission you need: `pip install htcondor==23.10.29 snakemake-executor-plugin-htcondor==0.1.2`. It is important to pin the versions here because recent releases are not compatible anymore with the T2B htcondor (maybe in the future they will.)
 3. Copy the profile configuration file provided in this GitHub repository `Software/condor_submit/profile/config.yaml`, in you T2B folder `$HOME/.config/snakemake/<my_profile>/.` 
   - `$HOME` is your home directory when you connect to T2B you can check what it is by running `echo $HOME` on your terminal
