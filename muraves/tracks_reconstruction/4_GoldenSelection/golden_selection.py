@@ -16,12 +16,20 @@ exactly as the C++ macro. For each golden event it writes one entry of the
   position, size, Texp, max/min strip energy;
 * the cluster multiplicity of each plane and the clusters NOT on the track;
 * run information: Run, TriggerRate, RunDuration, WorkingPoint, Timestamp.
+  RunDuration [min] = (latest - earliest event timestamp) / 60000, computed from
+  the event timestamps (Unix epoch in ms); equal to the step-3 value when the
+  timestamps are in increasing order.
 
 Planes 1-3 use the clusters of the best 3p track (``TrackCluster_<p>k_index``
 at ``BestTrack_3p_<proj>_index``); plane 4 uses the cluster of the best 4p
 extension (``BestTrack_4p_ClusterIndex_<proj>``, written by step 3). By
 construction in step 3 the best 4p track is attached to the best 3p track,
 so all 4 clusters belong to the same track.
+
+Step-3 files produced before BestTrack_4p_ClusterIndex_<proj> existed (v1.0.0)
+are still supported: the plane-4 cluster is recovered as the unique 4p candidate
+whose chiSquare_4p_<proj> and ScatteringAngle_<proj> equal the stored best
+values (see _recover_plane4_index).
 
 Nothing is recomputed: every value is copied from the step-3 output.
 """
@@ -44,7 +52,6 @@ from muraves_lib.reco.golden_selector import MISSING, is_golden
 logger = logging.getLogger(__name__)
 
 INPUT_TREE = "AnalyzedData"
-RUN_INFO_TREE = "Run_info"
 OUTPUT_TREE = "Tracks4ptree"
 
 PLANES = ("Z1", "Z2", "Z3", "Z4", "Y1", "Y2", "Y3", "Y4")
@@ -94,6 +101,15 @@ def build_output_schema() -> dict[str, str]:
     return schema
 
 
+PLANE4_INDEX_BRANCHES = ("BestTrack_4p_ClusterIndex_xz", "BestTrack_4p_ClusterIndex_xy")
+# Flattened 4p-candidate branches used to recover the plane-4 index from old files.
+LEGACY_4P_BRANCHES = tuple(
+    f"{name}_{proj}"
+    for proj in ("xz", "xy")
+    for name in ("chiSquare_4p", "ScatteringAngle", "cluster_c4_index")
+)
+
+
 def _input_branches() -> list[str]:
     branches = [
         "Run", "TriggerRate", "WorkingPoint", "timestamp",
@@ -102,7 +118,6 @@ def _input_branches() -> list[str]:
         "BestTrack_3p_ChiSquare_xz", "BestTrack_3p_ChiSquare_xy",
         "BestTrack_4p_ChiSquare_xz", "BestTrack_4p_ChiSquare_xy",
         "BestTracks_ScatteringAngle_xz", "BestTracks_ScatteringAngle_xy",
-        "BestTrack_4p_ClusterIndex_xz", "BestTrack_4p_ClusterIndex_xy",
     ]
     for p in PLANES:
         branches += [
@@ -148,14 +163,33 @@ def _strip_extremes(strips_flat: ak.Array, sizes: ak.Array, selected: np.ndarray
     return strip_max, strip_min
 
 
-def _read_run_duration(analyzed_root: Path, run: int) -> float:
-    run_info = analyzed_root.with_name(f"MURAVES_miniRunTree_run{run}.root")
-    try:
-        with uproot.open(run_info) as handle:
-            return float(handle[RUN_INFO_TREE]["RunDuration"].array(library="np")[0])
-    except Exception as exc:  # noqa: BLE001 - logged, not fatal for the selection
-        logger.warning("RunDuration not available for run %s (%s): %s", run, run_info, exc)
+def _run_duration_minutes(timestamps: ak.Array) -> float:
+    """Run duration [min] from the event timestamps (Unix epoch in ms)."""
+    ts = ak.to_numpy(timestamps)
+    if len(ts) == 0:
         return float(MISSING)
+    return max(0.0, float(ts.max() - ts.min()) / 60000.0)
+
+
+def _recover_plane4_index(events: ak.Array, proj: str) -> np.ndarray:
+    """Plane-4 cluster of the best 4p track, for step-3 files without
+    BestTrack_4p_ClusterIndex_<proj>.
+
+    chiSquare_4p_<proj>, ScatteringAngle_<proj> and cluster_c4_index_<proj> are
+    flattened per event but stay aligned (same 4p-candidate order). The best 4p
+    track is the candidate whose chi square AND scattering angle equal the stored
+    best values. Events without a match, or with matches pointing to different
+    clusters, get MISSING (and are then dropped as inconsistent).
+    """
+    match = (events[f"chiSquare_4p_{proj}"] == events[f"BestTrack_4p_ChiSquare_{proj}"]) & (
+        events[f"ScatteringAngle_{proj}"] == events[f"BestTracks_ScatteringAngle_{proj}"]
+    )
+    candidates = events[f"cluster_c4_index_{proj}"][match]
+    first = ak.firsts(candidates)
+    unique = ak.fill_none(ak.all(candidates == first, axis=1), False) & (ak.num(candidates) > 0)
+    index = ak.to_numpy(ak.fill_none(first, MISSING)).astype(np.int64)
+    index[~ak.to_numpy(unique)] = MISSING
+    return index
 
 
 # ---------------------------------------------------------------------------
@@ -309,20 +343,52 @@ def process_run(analyzed_root: str | Path, output_dir: Path, overwrite: bool) ->
                 logger.error("Run %s: tree %s not found in %s", run, INPUT_TREE, analyzed_root)
                 return None
             tree = handle[INPUT_TREE]
-            missing = [b for b in _input_branches() if b not in tree.keys()]
-            if missing:
+            if tree.num_entries == 0:
+                # Step 3 writes a placeholder tree (Run, Event) when a run has no
+                # events (e.g. only pedestal files in RAW): empty golden tree.
+                empty_run = True
+            else:
+                empty_run = False
+            available = set(tree.keys())
+            branches = _input_branches()
+            if all(b in available for b in PLANE4_INDEX_BRANCHES):
+                branches += list(PLANE4_INDEX_BRANCHES)
+                legacy = False
+            else:
+                branches += list(LEGACY_4P_BRANCHES)
+                legacy = True
+            missing = [b for b in branches if b not in available]
+            if empty_run:
+                events = None
+            elif missing:
                 logger.error(
-                    "Run %s: input %s lacks branches %s (was it produced by an older step 3?)",
+                    "Run %s: input %s lacks branches %s",
                     run, analyzed_root, ", ".join(missing),
                 )
                 return None
-            events = tree.arrays(_input_branches(), library="ak")
+            else:
+                events = tree.arrays(branches, library="ak")
     except Exception as exc:  # noqa: BLE001 - one broken run must not stop the batch
         logger.error("Run %s: cannot read %s: %s", run, analyzed_root, exc)
         return None
 
-    run_duration = _read_run_duration(analyzed_root, run)
-    columns, counters = select_golden(events, run_duration)
+    if empty_run:
+        columns = {"Run": np.asarray([], dtype=np.int64)}
+        counters = {"input": 0, "gate": 0, "golden": 0, "inconsistent": 0, "plane4_index_recovered": 0}
+    elif legacy:
+        logger.info(
+            "Run %s: %s not in input, recovering the plane-4 cluster from the 4p candidates.",
+            run, "/".join(PLANE4_INDEX_BRANCHES),
+        )
+        for proj in ("xz", "xy"):
+            events = ak.with_field(
+                events, _recover_plane4_index(events, proj), f"BestTrack_4p_ClusterIndex_{proj}"
+            )
+
+    if not empty_run:
+        run_duration = _run_duration_minutes(events["timestamp"])
+        columns, counters = select_golden(events, run_duration)
+        counters["plane4_index_recovered"] = int(legacy)
 
     output_root.parent.mkdir(parents=True, exist_ok=True)
     with file_handler.temp_to_output(output_root) as tmp_path:
