@@ -289,7 +289,9 @@ Tree `Tracks4ptree`, one entry per golden event (`BestTrack_3p_ChiSquare_xz != -
 - for each plane `Z1..Z4`, `Y1..Y4`: `TrackClusterEnergy/Position/Size/Exp_<plane>`, `TrackClusterMax/MinStripEnergy_<plane>`, `ClusterMultriplicity_<plane>` and the clusters not on the track `NonTrackClusterEnergy/Size/Position_<plane>`
 - run: `Run`, `TriggerRate`, `RunDuration`, `WorkingPoint`, `Timestamp` (per-event timestamp of step 3; replaces the C++ `Datetime`)
 
-A run without golden events gets an empty `Tracks4ptree`. `4_GoldenSelection/validate_golden_selection.py` cross-checks the output against an independent event loop on the step-3 `.jsonl` (used by the CI).
+`RunDuration` [min] is computed from the event timestamps, (latest − earliest) / 60000, so the run-level tree is not needed.
+
+A run without golden events (or without any event) gets an empty `Tracks4ptree`. Step-3 files produced before `BestTrack_4p_ClusterIndex_xz/xy` existed (v1.0.0) are still supported: the plane-4 cluster is recovered from the 4p candidates (the one whose `chiSquare_4p` and `ScatteringAngle` equal the stored best values). `4_GoldenSelection/validate_golden_selection.py` cross-checks the output against an independent event loop on the step-3 `.jsonl` (used by the CI).
 
 `output_path` is:
 
