@@ -37,8 +37,8 @@ The jobs run inside a shared image, already built and stored in
    ```
    - `$HOME` is your home directory on T2B (`echo $HOME`).
    - `<my_profile>` is any name you choose: it is the name you pass to `--profile`.
-   - In the copied file, replace `<username>` in `htcondor-jobdir` with your T2B user name
-     (`echo $USER`), and create that folder: `mkdir -p $HOME/muraves_outputs`.
+   - The job files (logs, submit files) go to `$HOME/muraves_outputs` (`htcondor-jobdir`), the
+     same folder bound in `singularity-args`. Create it once: `mkdir -p $HOME/muraves_outputs`.
 4. Test that HTCondor works within this environment:
    ```bash
    python - <<'EOF'
