@@ -11,6 +11,34 @@
 ! Date        : yyyy-mm-dd           
 !-----------------------------------------------------------------------------
 
+!================ Workflow tag v1.1.0 2026-11-09 ==================================
+|Description:
+| v1 data do NOT need to be reprocessed (tag/requirements.yaml stays at v1): the reconstructed
+| tracks are unchanged; the reconstruction output only gains two branches and a bug fix (below),
+| and the golden selection also runs on files produced with v1.0.0. Same tag as muraves_lib-v0.1.0.
+|  - New step: golden selection (4_GoldenSelection), writing a flat Tracks4ptree per run
+|    (Track4p_run<N>.root) with the events that have a valid 3-plane AND 4-plane track.
+|    https://github.com/muraves/Software/pull/19
+|  - Reconstruction output (3_MainRecSof): new branches BestTrack_4p_ClusterIndex_xz/xy (plane-4
+|    cluster of the best 4p track); RunDuration fixed, timestamps are in ms. For files produced
+|    with v1.0.0 the golden selection recovers the plane-4 cluster and recomputes RunDuration
+|    from the event timestamps. https://github.com/muraves/Software/pull/23
+|  - Workflow output files are group-readable. https://github.com/muraves/Software/pull/20
+|  - Reconstruction core shared with the simulation chain moved into the package muraves_lib.reco
+|    (clustering, tracking, angular coordinates, golden-track definition, configuration loader).
+|    Unused parts removed (pre-reconstruction step, old per-run 1phe chain, stageout rule) and
+|    step folders renumbered 1_Parser, 2_PedAna, 3_MainRecSof, 4_GoldenSelection.
+|    https://github.com/muraves/Software/pull/21
+|  - All configuration files gathered in muraves_lib/configuration/ (shared/, data/, simulation/);
+|    hardcoded parameters of the parser, pedestal reader and Snakefile now read from there;
+|    unused geometry columns removed from the telescope board maps.
+|    https://github.com/muraves/Software/pull/22
+|
+| muraves_lib-v0.1.0: first version with muraves_lib.reco and muraves_lib/configuration.
+| Not backward compatible with muraves_lib-v0.0.0 (new modules, config files moved).
+|
+| More details: https://github.com/muraves/Software/compare/v1.0.0...v1.1.0
+
 !================ Workflow tag v1.0.0 2026-11-04 ==================================
 |Description:
 | First release that went in production (v1 Data). New 1phe values implemented.
@@ -38,6 +66,10 @@
 | https://github.com/muraves/Software/releases/tag/v0.3.0
 
 **ERRATA:**
+Versions v1.0.0 and below: RunDuration (MURAVES_miniRunTree / Run_info) is 1000x too large,
+because the event timestamps are in ms and were divided by 60 instead of 60000.
+Use RunDuration / 1000, or (last - first event timestamp) / 60000. Fixed in v1.1.0.
+
 Versions below 0.3.0 are affected by two bugs:
   - ClusterLists.cc​, the variable ClusterStripsID​ is not cleared like the others, so the scripts misses a line clusterStripsID.clear(); 
     (see here: https://github.com/muraves/Software/blob/04c1b53684b718be08842bb740d3f1cbaca9729a/muraves/tracks_reconstruction/4_MainRecSof/ClusterLists.cc#L186)
