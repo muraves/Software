@@ -27,9 +27,6 @@ installed (in editable mode) every time the container starts.
    ```bash
    wget https://raw.githubusercontent.com/muraves/Software/refs/heads/master/environment/docker/setup_muraves.sh
    ```
-   Make sure this is the latest release by taking the URL from the
-   [releases page](https://github.com/muraves/Software/releases). The correct URL can also be found
-   by opening the RAW file in the browser.
 3. Make it executable: `chmod +x setup_muraves.sh`
 4. Run it: `./setup_muraves.sh`. It asks for your workspace folder (default: your home directory).
 5. If it succeeded, congratulations! The container is running and you should see:
