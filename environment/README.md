@@ -152,8 +152,9 @@ environment is not activated. This is why users start it through `setup_muraves.
 `entrypoint.sh`.
 
 The pipeline jobs on HTCondor use a different image, built from
-[`condor_submit/container/muraves-sing.def`](../condor_submit/container/muraves-sing.def); see the
-[tracks reconstruction README](../muraves/tracks_reconstruction/README.md).
+[`condor_submit/container/muraves-sing.def`](../condor_submit/container/muraves-sing.def) and stored
+next to this one in `/group/Muography/MURAVES/container/`; see the
+[HTCondor README](../condor_submit/README.md#the-container-image).
 
 # Troubleshooting
 

@@ -28,7 +28,7 @@ The most recently discussed topics can be found in the minutes of the
 | [`muraves/tracks_reconstruction/`](muraves/tracks_reconstruction/) | Snakemake pipeline: parser → pedestal → main reconstruction → golden selection | [README](muraves/tracks_reconstruction/README.md) |
 | [`muraves/analysis/`](muraves/analysis/) | Good run selection (`select_runs.py`), angular maps and transmission | [README](muraves/analysis/README.md) |
 | [`muraves/monitoring/`](muraves/monitoring/) | Run monitoring notebooks and plots (slow control, trigger rate, ...) | — |
-| [`condor_submit/`](condor_submit/) | HTCondor profile and Singularity definition to run the pipeline on the T2B batch system | [tracks_reconstruction README](muraves/tracks_reconstruction/README.md) |
+| [`condor_submit/`](condor_submit/) | HTCondor profile and Singularity definition to run the pipeline on the T2B batch system | [README](condor_submit/README.md) |
 | [`tag/`](tag/) | Versioning of the workflow (`tag.notes`, `requirements.yaml`) | [tag.notes](tag/tag.notes) |
 | [`test_data/`](test_data/) | Raw files of one NERO run (2500), used by the CI test of the pipeline | — |
 

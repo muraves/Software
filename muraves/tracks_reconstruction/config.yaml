@@ -11,7 +11,16 @@ data_path: '/data' # Path where data are stored ['/user/abiolchi/Software/test_d
 
 copy_to_data: False 
 # True:  temporary files will be copied to the data_path at the end of the execution, and deleted from the scratch_path
-# False: they will be copied into your home directory $HOME/muraves_outputs, and deleted from the scratch_path
+# False: they will be copied into home_output_path, and deleted from the scratch_path
+
+home_output_path: "$HOME/muraves_outputs"
+# Where outputs go when copy_to_data is False. Environment variables ($HOME, $USER, ...) are expanded.
+
+container: "/group/Muography/MURAVES/container/muraves-sing_v0.5.0.sif"
+# Singularity image used by every rule (see ../../condor_submit/README.md).
+# The name carries the repository tag the image was built from. muraves_lib is imported from
+# this checkout anyway (see PYTHONPATH in the Snakefile), so a new image is needed only when
+# the software installed in it (conda packages) must change.
 
 batch_size: 1 # number of runs to be executed in parallel.
 threads: 1 # number of cores requested per rule.
