@@ -42,7 +42,8 @@ try:
 except ImportError as error:  # pragma: no cover - depends on the environment
     raise SystemExit(
         "The analysis scripts use the station map from simReco_muraves; "
-        "install the package first (pip install -e .)."
+        "install the package first, from the repository root: "
+        'pip install -e ".[sim]".'
     ) from error
 
 

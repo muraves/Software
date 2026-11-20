@@ -111,22 +111,25 @@ Responsibilities:
 
 ## Installation
 
+The simulation reconstruction is part of the MURAVES Software package
+and is installed with it, from the repository root (`Software/`):
+
 ```bash
-pip install -e .
+pip install -e ".[sim]"
 ```
 
-An editable install puts `simReco_muraves` on the import path and
-registers the command-line entry points. Without it, the modules must
-be run from the repository root with `PYTHONPATH=.` set.
+An editable install puts `simReco_muraves` and `muraves_lib` on the
+import path and registers the command-line entry points.
 
-The dependencies are uproot, awkward, numpy and SciPy (>= 1.16,
+The `sim` extra brings uproot, awkward, numpy and SciPy (>= 1.16,
 for the Landau draw of the path-length digitizer).
 
-To run the test suite as well, install the development extra:
+To run the test suite as well, add the development extra, again from
+the repository root:
 
 ```bash
-pip install -e ".[dev]"
-python -m pytest simReco_muraves -q
+pip install -e ".[sim,dev]"
+python -m pytest -q
 ```
 
 `pytest` is not a runtime dependency, so a plain install will not
@@ -265,10 +268,10 @@ about 0.6% of golden events changing between runs.
 
 ## Validation
 
-Canonical regression suite:
+Canonical regression suite, from the repository root:
 
 ```bash
-python -m pytest simReco_muraves -q
+python -m pytest -q
 ```
 
 The suite covers every stage:

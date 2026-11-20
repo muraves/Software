@@ -51,7 +51,7 @@ def print_overview() -> None:
     print()
     print(
         "MURAVES simulation reconstruction  "
-        f"(simreco-muraves {package_version()})"
+        f"(muraves-lib {package_version()})"
     )
     print()
     print(f"  {CHAIN}")

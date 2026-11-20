@@ -41,7 +41,9 @@ UNKNOWN = "unknown"
 #: Libraries whose behaviour the output can depend on.
 TRACKED_LIBRARIES = ("uproot", "awkward", "numpy")
 
-DISTRIBUTION_NAMES = ("simreco-muraves", "simReco_muraves")
+#: The installed distribution that carries simReco_muraves: the MURAVES
+#: Software package, installed from the repository root.
+DISTRIBUTION_NAMES = ("muraves-lib",)
 
 _GIT_TIMEOUT_SECONDS = 5
 

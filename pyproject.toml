@@ -4,14 +4,52 @@ name = "muraves-lib"   # nome del package (a tua scelta)
 version = "0.1.0"  # muraves_lib-vX.Y.Z git tag
 description = "Project for analysis and monitoring of MuRaVes data"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
+
+[project.optional-dependencies]
+# Simulation reconstruction (muraves/simulation/), from this folder:
+#   pip install -e ".[sim]"        or, with the test suite,   pip install -e ".[sim,dev]"
+sim = [
+    "uproot",
+    "awkward",
+    "numpy",
+    "scipy>=1.16",   # Landau draw of the path-length digitizer
+]
+sim-analysis = ["matplotlib"]   # muraves/simulation/analysis/
+dev = ["pytest"]
+
+[project.scripts]
+# Simulation reconstruction commands (muraves/simulation/).
+"muraves-simCluster" = "simReco_muraves.cli.run_clusterization:main"
+"muraves-simTrk" = "simReco_muraves.cli.run_tracking:main"
+"muraves-simGTrk" = "simReco_muraves.cli.run_gTrks:main"
+"muraves-sim" = "simReco_muraves.cli.overview:main"
+"muraves-simCompare" = "simReco_muraves.cli.compare_golden_routes:main"
 
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["muraves_lib", "muraves_lib.reco"]   # i pacchetti che vuoi includere
+packages = [   # i pacchetti che vuoi includere
+    "muraves_lib",
+    "muraves_lib.reco",
+    # Simulation reconstruction, from muraves/simulation/ (see package-dir).
+    # Every subpackage must be listed: simReco_muraves/tests/test_packaging.py checks it.
+    "simReco_muraves",
+    "simReco_muraves.cli",
+    "simReco_muraves.clustering",
+    "simReco_muraves.clustering.tests",
+    "simReco_muraves.config",
+    "simReco_muraves.golden_tracking",
+    "simReco_muraves.golden_tracking.tests",
+    "simReco_muraves.io",
+    "simReco_muraves.models",
+    "simReco_muraves.tests",
+    "simReco_muraves.tracking",
+    "simReco_muraves.tracking.tests",
+]
+package-dir = {"simReco_muraves" = "muraves/simulation/simReco_muraves"}
 
 [tool.setuptools.package-data]
 # Detector and reconstruction configuration (muraves_lib/configuration/), shipped with the package.
@@ -24,3 +62,6 @@ packages = ["muraves_lib", "muraves_lib.reco"]   # i pacchetti che vuoi includer
     "configuration/data/pedestal_1phe_values/*/*.txt",
 ]
 
+[tool.pytest.ini_options]
+# The simulation reconstruction's tests; run python -m pytest from this folder.
+testpaths = ["muraves/simulation/simReco_muraves"]
