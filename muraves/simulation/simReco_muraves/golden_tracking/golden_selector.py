@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import Protocol
 
+from muraves_lib.reco.golden_selector import MISSING, is_golden
+
 
 class GoldenRejectCode(IntEnum):
     ACCEPTED = 0
@@ -44,16 +46,16 @@ class GoldenSelection:
 def select_golden_track(event: GoldenEvent) -> GoldenSelection:
     """Apply the main-reconstruction XZ-only golden-track gate."""
 
-    if event.best_track_3p_chi_square_xz == -1:
+    # The gate itself is the definition shared with the data chain;
+    # only the rejection reason and the indices are simulation diagnostics.
+    if not is_golden(event.best_track_3p_chi_square_xz, event.best_track_4p_chi_square_xz):
         return GoldenSelection(
             accepted=False,
-            reject_code=GoldenRejectCode.INVALID_3P_XZ,
-        )
-
-    if event.best_track_4p_chi_square_xz == -1:
-        return GoldenSelection(
-            accepted=False,
-            reject_code=GoldenRejectCode.INVALID_4P_XZ,
+            reject_code=(
+                GoldenRejectCode.INVALID_3P_XZ
+                if event.best_track_3p_chi_square_xz == MISSING
+                else GoldenRejectCode.INVALID_4P_XZ
+            ),
         )
 
     return GoldenSelection(

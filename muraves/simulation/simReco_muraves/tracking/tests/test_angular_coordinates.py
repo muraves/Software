@@ -18,7 +18,7 @@ import math
 
 import pytest
 
-from simReco_muraves.tracking.Evaluate_Angular_Coordinates import (
+from muraves_lib.reco.angular_coordinates import (
     TrackAngularCoordinates,
     track_angular_coordinates,
 )

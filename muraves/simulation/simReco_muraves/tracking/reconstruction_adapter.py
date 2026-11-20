@@ -6,10 +6,8 @@ from simReco_muraves.models.tracking_results import TrackingResult
 from ..models.tracking_event import TrackingEvent
 from ..nested_access import MISSING_VALUE, nested_value_or_missing
 
-from simReco_muraves.tracking.Tracking import MakeTracks
-from simReco_muraves.tracking.Evaluate_Angular_Coordinates import (
-    TrackAngularCoordinates,
-)
+from muraves_lib.reco.angular_coordinates import TrackAngularCoordinates
+from muraves_lib.reco.tracking import MakeTracks
 
 
 # Plane-4 candidate selection quality, mirroring
@@ -26,6 +24,7 @@ def run_tracking_xz(
     sigma_z: float,
     proximity_cut_xz: float,
     tracking_cfg: dict,
+    strips_cfg: dict | None = None,
 ):
     return MakeTracks(
         [c.cluster_position for c in event.z1],
@@ -45,6 +44,7 @@ def run_tracking_xz(
         z_add,
         sigma_z,
         tracking_cfg=tracking_cfg,
+        strips_cfg=strips_cfg,
     )
 
 
@@ -55,6 +55,7 @@ def run_tracking_xy(
     sigma_y: float,
     proximity_cut_xy: float,
     tracking_cfg: dict,
+    strips_cfg: dict | None = None,
 ):
     return MakeTracks(
         [c.cluster_position for c in event.y1],
@@ -74,6 +75,7 @@ def run_tracking_xy(
         y_add,
         sigma_y,
         tracking_cfg=tracking_cfg,
+        strips_cfg=strips_cfg,
     )
 
 
@@ -153,6 +155,7 @@ def reconstruct_event(
     proximity_cut_xz: float,
     proximity_cut_xy: float,
     tracking_cfg: dict,
+    strips_cfg: dict | None = None,
 ) -> TrackingResult:
 
     tracks_xz = run_tracking_xz(
@@ -162,6 +165,7 @@ def reconstruct_event(
         sigma_z,
         proximity_cut_xz,
         tracking_cfg,
+        strips_cfg,
     )
 
     tracks_xy = run_tracking_xy(
@@ -171,6 +175,7 @@ def reconstruct_event(
         sigma_y,
         proximity_cut_xy,
         tracking_cfg,
+        strips_cfg,
     )
 
     ntracks_3p_xz = len(tracks_xz.intercepts_3p)

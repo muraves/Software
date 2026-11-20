@@ -16,13 +16,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from simReco_muraves.config.reco_config import get_reco_config
+from muraves_lib.reco.reco_config import get_reco_config
 from simReco_muraves.models.cluster_record import ClusterRecord
 from simReco_muraves.models.tracking_event import TrackingEvent
 from simReco_muraves.tracking import reconstruction_adapter as ra
-from simReco_muraves.tracking.Evaluate_Angular_Coordinates import (
-    TrackAngularCoordinates,
-)
+from muraves_lib.reco.angular_coordinates import TrackAngularCoordinates
 from simReco_muraves.tracking.event_builder_adapter import (
     build_tracking_events,
 )
@@ -137,7 +135,8 @@ def reconstruct(event, x_pos=X_POS):
         sigma_y=0.0035,
         proximity_cut_xz=0.020,
         proximity_cut_xy=0.0175,
-        tracking_cfg=get_reco_config()["tracking"],
+        tracking_cfg=get_reco_config(chain="simulation")["tracking"],
+        strips_cfg=get_reco_config(chain="simulation")["strips"],
     )
 
 
@@ -244,3 +243,26 @@ def test_empty_event_reconstructs_to_nothing():
     assert result.best_track_3p_chi_square_xz == -1.0
     assert result.theta_3p == -1.0
     assert result.best_track_4p_is_texp_null_xz == ra.TEXP_NULL_NOT_PROMOTED
+
+
+def test_tracked_record_takes_the_track_clusters_from_the_event():
+    """TrackPosition/Energy/Time_* in TrackedData: one value per 3p track,
+    from that track's cluster on the plane (the shared MakeTracks stores
+    only the indices and positions, so the writer looks the rest up)."""
+    from simReco_muraves.io.tracking_root_writer import build_tracked_event_record
+
+    event = straight_event()
+    result = reconstruct(event)
+    record = build_tracked_event_record(event, result)
+
+    for view, planes, offsets in (("xz", ("z1", "z2", "z3"), Z_ADD), ("xy", ("y1", "y2", "y3"), Y_ADD)):
+        tracks = getattr(result, f"tracks_{view}")
+        assert tracks.cluster_index_1, f"no {view} track to check"
+        for k, plane in enumerate(planes, start=1):
+            indices = getattr(tracks, f"cluster_index_{k}")
+            clusters = getattr(event, plane)
+            assert getattr(record, f"TrackPosition_{plane}") == [
+                clusters[i].cluster_position + offsets[k - 1] for i in indices
+            ]
+            assert getattr(record, f"TrackEnergy_{plane}") == [clusters[i].cluster_energy for i in indices]
+            assert getattr(record, f"TrackTime_{plane}") == [clusters[i].cluster_time for i in indices]

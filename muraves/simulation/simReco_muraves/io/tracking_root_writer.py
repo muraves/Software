@@ -625,6 +625,14 @@ def write_tracked_root(
 
         
 
+def _track_cluster_values(clusters, cluster_indices, attribute):
+    """One value per three-plane track: the attribute of that track's
+    cluster on this plane. The shared MakeTracks stores only the cluster
+    indices (and positions) per track; energies and times are looked up
+    in the event, exactly as MakeTracks received them."""
+    return [getattr(clusters[index], attribute) for index in cluster_indices]
+
+
 def build_tracked_event_record(
     event: TrackingEvent,
     result: TrackingResult,
@@ -676,29 +684,29 @@ def build_tracked_event_record(
         TrackEnergy_3p_xy=result.tracks_xy.TrackEnergy_3p,
 
 
-        TrackPosition_z1=result.tracks_xz.track_position_1,
-        TrackPosition_z2=result.tracks_xz.track_position_2,
-        TrackPosition_z3=result.tracks_xz.track_position_3,
+        TrackPosition_z1=list(result.tracks_xz.position_c1),
+        TrackPosition_z2=list(result.tracks_xz.position_c2),
+        TrackPosition_z3=list(result.tracks_xz.position_c3),
 
-        TrackPosition_y1=result.tracks_xy.track_position_1,
-        TrackPosition_y2=result.tracks_xy.track_position_2,
-        TrackPosition_y3=result.tracks_xy.track_position_3,
+        TrackPosition_y1=list(result.tracks_xy.position_c1),
+        TrackPosition_y2=list(result.tracks_xy.position_c2),
+        TrackPosition_y3=list(result.tracks_xy.position_c3),
 
-        TrackEnergy_z1=result.tracks_xz.track_energy_1,
-        TrackEnergy_z2=result.tracks_xz.track_energy_2,
-        TrackEnergy_z3=result.tracks_xz.track_energy_3,
+        TrackEnergy_z1=_track_cluster_values(event.z1, result.tracks_xz.cluster_index_1, "cluster_energy"),
+        TrackEnergy_z2=_track_cluster_values(event.z2, result.tracks_xz.cluster_index_2, "cluster_energy"),
+        TrackEnergy_z3=_track_cluster_values(event.z3, result.tracks_xz.cluster_index_3, "cluster_energy"),
 
-        TrackEnergy_y1=result.tracks_xy.track_energy_1,
-        TrackEnergy_y2=result.tracks_xy.track_energy_2,
-        TrackEnergy_y3=result.tracks_xy.track_energy_3,
+        TrackEnergy_y1=_track_cluster_values(event.y1, result.tracks_xy.cluster_index_1, "cluster_energy"),
+        TrackEnergy_y2=_track_cluster_values(event.y2, result.tracks_xy.cluster_index_2, "cluster_energy"),
+        TrackEnergy_y3=_track_cluster_values(event.y3, result.tracks_xy.cluster_index_3, "cluster_energy"),
 
-        TrackTime_z1=result.tracks_xz.track_time_1,
-        TrackTime_z2=result.tracks_xz.track_time_2,
-        TrackTime_z3=result.tracks_xz.track_time_3,
+        TrackTime_z1=_track_cluster_values(event.z1, result.tracks_xz.cluster_index_1, "cluster_time"),
+        TrackTime_z2=_track_cluster_values(event.z2, result.tracks_xz.cluster_index_2, "cluster_time"),
+        TrackTime_z3=_track_cluster_values(event.z3, result.tracks_xz.cluster_index_3, "cluster_time"),
 
-        TrackTime_y1=result.tracks_xy.track_time_1,
-        TrackTime_y2=result.tracks_xy.track_time_2,
-        TrackTime_y3=result.tracks_xy.track_time_3,
+        TrackTime_y1=_track_cluster_values(event.y1, result.tracks_xy.cluster_index_1, "cluster_time"),
+        TrackTime_y2=_track_cluster_values(event.y2, result.tracks_xy.cluster_index_2, "cluster_time"),
+        TrackTime_y3=_track_cluster_values(event.y3, result.tracks_xy.cluster_index_3, "cluster_time"),
 
 #        TrackPosition_z4=[],
 #        TrackPosition_y4=[],

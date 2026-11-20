@@ -25,6 +25,7 @@ def run_tracking_pipeline(
     proximity_cut_xz: float,
     proximity_cut_xy: float,
     tracking_cfg: dict,
+    strips_cfg: dict | None = None,
 ) -> list[TrackingResult]:
     """
     Run MURAVES tracking reconstruction on a flat list of ClusterRecord
@@ -49,6 +50,7 @@ def run_tracking_pipeline(
             proximity_cut_xz=proximity_cut_xz,
             proximity_cut_xy=proximity_cut_xy,
             tracking_cfg=tracking_cfg,
+            strips_cfg=strips_cfg,
         )
 
         results.append(result)

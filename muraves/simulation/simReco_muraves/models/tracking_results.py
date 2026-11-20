@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from simReco_muraves.tracking.Tracking import TracksCollection
+from muraves_lib.reco.tracking import TracksCollection
 
 
 @dataclass

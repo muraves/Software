@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from simReco_muraves.config.reco_config import get_reco_config
+from muraves_lib.reco.reco_config import get_reco_config
 from simReco_muraves.io.clustered_root_reader import load_clusters
 from simReco_muraves.io.provenance_tree import attach_provenance
 from simReco_muraves.io.tracking_root_writer import (
@@ -39,14 +39,17 @@ Y_ADD = [0.0, 0.0, 0.0, 0.0]
 
 
 # ==========================================================
-# Tracking parameters
+# Tracking parameters: from the shared reconstruction configuration
+# (muraves_lib/configuration), computed as the data chain does.
 # ==========================================================
 
-SIGMA_Z = 0.004
-SIGMA_Y = 0.0035
+_RECONSTRUCTION = get_reco_config(chain="simulation")["reconstruction"]
 
-PROXIMITY_CUT_XZ = 0.020
-PROXIMITY_CUT_XY = 0.0175
+SIGMA_Z = float(_RECONSTRUCTION["sigma_z"])
+SIGMA_Y = float(_RECONSTRUCTION["sigma_y"])
+
+PROXIMITY_CUT_XZ = float(_RECONSTRUCTION["proximity_sigma_multiplier"]) * SIGMA_Z
+PROXIMITY_CUT_XY = float(_RECONSTRUCTION["proximity_sigma_multiplier"]) * SIGMA_Y
 
 
 CLUSTERED_PATTERNS = (
@@ -157,7 +160,7 @@ def process_file(
     tracking_events = build_tracking_events(clusters)
     print(f"Tracking events : {len(tracking_events):,}")
 
-    configuration = get_reco_config()
+    configuration = get_reco_config(chain="simulation")
 
     results = run_tracking_pipeline(
         clusters,
@@ -169,6 +172,7 @@ def process_file(
         proximity_cut_xz=PROXIMITY_CUT_XZ,
         proximity_cut_xy=PROXIMITY_CUT_XY,
         tracking_cfg=configuration["tracking"],
+        strips_cfg=configuration["strips"],
     )
 
     print(f"Tracking results: {len(results):,}")

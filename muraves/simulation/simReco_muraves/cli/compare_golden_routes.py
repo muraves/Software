@@ -330,7 +330,7 @@ def run_both_routes(
 
     # Imported here so that --golden mode works even if the tracking
     # dependencies are unavailable.
-    from simReco_muraves.config.reco_config import get_reco_config
+    from muraves_lib.reco.reco_config import get_reco_config
     from simReco_muraves.golden_tracking.production_pipeline import (
         run_golden_tracking_output,
     )
@@ -371,7 +371,7 @@ def run_both_routes(
         )
 
     events = build_tracking_events(clusters)
-    configuration = get_reco_config()
+    configuration = get_reco_config(chain="simulation")
 
     results = run_tracking_pipeline(
         clusters,
@@ -383,6 +383,7 @@ def run_both_routes(
         proximity_cut_xz=PROXIMITY_CUT_XZ,
         proximity_cut_xy=PROXIMITY_CUT_XY,
         tracking_cfg=configuration["tracking"],
+        strips_cfg=configuration["strips"],
     )
 
     if len(events) != len(results):

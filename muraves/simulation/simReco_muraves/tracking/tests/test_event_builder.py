@@ -124,6 +124,7 @@ GEOMETRY = dict(
     proximity_cut_xz=0.020,
     proximity_cut_xy=0.0175,
     tracking_cfg={},
+    strips_cfg={},
 )
 
 

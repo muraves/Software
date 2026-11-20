@@ -40,7 +40,6 @@ packages = [   # i pacchetti che vuoi includere
     "simReco_muraves.cli",
     "simReco_muraves.clustering",
     "simReco_muraves.clustering.tests",
-    "simReco_muraves.config",
     "simReco_muraves.golden_tracking",
     "simReco_muraves.golden_tracking.tests",
     "simReco_muraves.io",

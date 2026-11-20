@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from simReco_muraves.tracking.Tracking import (
+from muraves_lib.reco.tracking import (
     MakeTracks,
     _linear_fit_with_known_sigma,
 )

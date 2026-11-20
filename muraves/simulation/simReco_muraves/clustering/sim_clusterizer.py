@@ -7,13 +7,13 @@ from collections.abc import Mapping
 import numpy as np
 from scipy.stats import landau
 
-from simReco_muraves.models.cluster_record import ClusterRecord
-
-# Adjust this import to wherever CreateClusterList actually lives
-from simReco_muraves.clustering.ClusterLists import (
+from muraves_lib.reco.cluster_lists import (
     CreateClusterList,
     DeterministicSmearingRNG,
 )
+from muraves_lib.reco.reco_config import get_reco_config
+
+from simReco_muraves.models.cluster_record import ClusterRecord
 from simReco_muraves.clustering.seeding import (
     digitizer_generator,
     smearing_seed,
@@ -80,19 +80,34 @@ class Plane64:
 class SimClusterizer:
     """
     Thin wrapper around the official MURAVES clusterizer.
+
+    Thresholds and clustering constants come from the shared
+    reconstruction configuration (simulation chain) unless given.
     """
 
     def __init__(
         self,
-        cluster_threshold: float = 6.0,
-        single_strip_threshold: float = 10.0,
-        adjacent_threshold: float = 2.0,
+        cluster_threshold: float | None = None,
+        single_strip_threshold: float | None = None,
+        adjacent_threshold: float | None = None,
         rng_seed: int | None = None,
     ):
 
-        self.cluster_threshold = cluster_threshold
-        self.single_strip_threshold = single_strip_threshold
-        self.adjacent_threshold = adjacent_threshold
+        configuration = get_reco_config(chain="simulation")
+        thresholds = configuration["reconstruction"]["cluster_thresholds"]
+
+        self.cluster_threshold = (
+            float(thresholds["s1"]) if cluster_threshold is None else cluster_threshold
+        )
+        self.single_strip_threshold = (
+            float(thresholds["s2"]) if single_strip_threshold is None else single_strip_threshold
+        )
+        self.adjacent_threshold = (
+            float(thresholds["s3"]) if adjacent_threshold is None else adjacent_threshold
+        )
+
+        self.cluster_cfg = configuration["cluster_lists"]
+        self.strips_cfg = configuration["strips"]
 
         # None keeps the experiment's default: unseeded smearing from
         # the operating system, different on every run.
@@ -122,6 +137,9 @@ class SimClusterizer:
             TriggerMask2=list(range(32)),
 
             smearing_rng=self._smearing_rng(plane),
+
+            cluster_cfg=self.cluster_cfg,
+            strips_cfg=self.strips_cfg,
         )
 
     def _smearing_rng(self, plane: Plane64):

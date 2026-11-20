@@ -17,7 +17,7 @@ import numpy as np
 from scipy.stats import landau
 
 from simReco_muraves.clustering import sim_clusterizer as sc
-from simReco_muraves.clustering.ClusterLists import ClusterCollection
+from muraves_lib.reco.cluster_lists import ClusterCollection
 
 
 def raw_hit(process_id=1, event=10, station=0, module=0, bar=5, edep=1.0, path_length=1.7, time=2.0):
