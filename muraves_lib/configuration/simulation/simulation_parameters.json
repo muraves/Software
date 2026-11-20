@@ -1,0 +1,7 @@
+{
+  "_about": "Parameters used only by the simulation chain (muraves/simulation/). Loaded on top of ../shared/reco_parameters.json by get_reco_config(chain=\"simulation\"); may not redefine its sections. Keys starting with '_' are documentation.",
+  "digitization": {
+    "_note": "pe_per_cm_file: the per-run NPE/cm calibration used by the path-length digitizer when --pe-per-cm-file is given without a path. Relative to this folder.",
+    "pe_per_cm_file": "npecm_per_run_v1.json"
+  }
+}

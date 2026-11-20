@@ -142,8 +142,8 @@ Each stage can be run either as a console script or as a module:
 Clusterization (simulated hits -> ClusteredData):
 
 ```bash
-muraves-simCluster <hit_root_file> [-o OUTPUT_DIR]
-python -m simReco_muraves.cli.run_clusterization <hit_root_file>
+muraves-simCluster <hit_root_file> --detector NERO [-o OUTPUT_DIR]
+python -m simReco_muraves.cli.run_clusterization <hit_root_file> --detector NERO
 ```
 
 Tracking (ClusteredData -> TrackedData):
@@ -164,12 +164,28 @@ python -m simReco_muraves.cli.run_gTrks <root_file>
 accepts `-o/--output` for a single input file and refuses to overwrite
 an existing output unless `--force` is given.
 
+### Detector and geometry
+
+`--detector {NERO,ROSSO,BLU}` is required at clustering. It names the
+simulated detector, is recorded in the provenance of every output, and
+goes into the output names (`<stem>_NERO_clustered_partNNN.root`). The
+tracking and golden stages reconstruct with that detector's geometry,
+its entry in `muraves_lib/configuration/shared/reco_parameters.json`
+(`detector_geometry`), which is the same entry the data chain uses: the
+simulated productions are generated with exactly that geometry. They
+read the detector from their input; `--detector` there is needed only
+for inputs that record none, and must agree with what they record.
+
+`fullRun_v3` was generated with an earlier Geant4 geometry (g4-sim
+`bac9b35`) that is not in the configuration; it is reproducible from
+the tag `standalone-final` of the standalone simReco-muraves repository.
+
 ### Running the chain end to end
 
 ```bash
-muraves-simCluster  validation_data/raw_100.root
-muraves-simTrk      validation_data/raw_100_clustered_part000.root
-muraves-simGTrk     validation_data/raw_100_tracked_part000.root
+muraves-simCluster  validation_data/raw_100.root --detector NERO
+muraves-simTrk      validation_data/raw_100_NERO_clustered_part000.root
+muraves-simGTrk     validation_data/raw_100_NERO_tracked_part000.root
 ```
 
 The golden stage accepts either input type and detects which it has
@@ -188,9 +204,9 @@ them, needs `-o` or separate directories. An existing output is never
 overwritten without `--force`.
 
 ```bash
-muraves-simGTrk validation_data/raw_100_clustered_part000.root \
+muraves-simGTrk validation_data/raw_100_NERO_clustered_part000.root \
     -o validation_data/g_clustered.root
-muraves-simGTrk validation_data/raw_100_tracked_part000.root \
+muraves-simGTrk validation_data/raw_100_NERO_tracked_part000.root \
     -o validation_data/g_tracked.root
 ```
 
@@ -208,7 +224,7 @@ is converted with one factor for every plane, and the npe is drawn
 from a Poisson distribution:
 
 ```bash
-muraves-simCluster <hit_root_file> --pe-per-mev 8.5 --rng-seed 42
+muraves-simCluster <hit_root_file> --detector NERO --pe-per-mev 8.5 --rng-seed 42
 ```
 
 The default conversion factor is the one used for the Phase I-III
@@ -220,9 +236,13 @@ from the good-run calibration file:
 
 ```bash
 muraves-simCluster <hit_root_file> \
-    --pe-per-cm-file calibration/npecm_per_run_v1.json \
-    --detector ROSSO --run-range 10061-11918 --rng-seed 42
+    --pe-per-cm-file --detector ROSSO --run-range 10061-11918 --rng-seed 42
 ```
+
+`--pe-per-cm-file` without a path uses the calibration shipped in
+`muraves_lib/configuration/simulation/` (`npecm_per_run_v1.json`); a
+path selects another file. Put the input file first, so that it is not
+read as the calibration path.
 The option was previously called `--pe-per-mev-file`; it is now
 `--pe-per-cm-file`, since the file holds NPE per cm rather than per MeV.
 
@@ -232,15 +252,15 @@ The option was previously called `--pe-per-mev-file`; it is now
   `TRandom::Landau`.
 - Each plane's NPE/cm is the mean over the selected good runs. Values
   that are null or outside [5, 15] NPE/cm are left out.
-- `--detector` is required. `--run-range` is optional; without it, the
+- `--detector` selects the calibration. `--run-range` is optional; without it, the
   detector's fallback setting is used, with a warning (NERO and BLU
   `wp25_a`, ROSSO `wp25_b`). A range spanning more than one setting
   also gives a warning.
 - `--pe-per-mev` and `--pe-per-cm-file` cannot be combined, and
-  `--detector` and `--run-range` are rejected without a file.
+  `--run-range` is rejected without a file.
 
-With a file, the detector and run range (or the fallback setting) are
-inserted into the output names, e.g.
+With a file, the run range (or the fallback setting) follows the
+detector in the output names, e.g.
 `<stem>_ROSSO_r10061-11918_clustered_partNNN.root` or
 `<stem>_ROSSO_rwp25_b_clustered_partNNN.root`.
 

@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import json
 
+from pathlib import Path
+
 import pytest
 
 from simReco_muraves.clustering import conversion_factors as cf
@@ -184,7 +186,7 @@ def setup(**overrides):
     values = dict(
         pe_per_mev=None,
         pe_per_cm_file=None,
-        detector=None,
+        detector="NERO",
         run_range=None,
         default_pe_per_mev=8.5,
     )
@@ -222,8 +224,30 @@ def test_default_factor_when_nothing_given():
 
     assert result.factors == 8.5
     assert not result.per_station
-    assert result.tag == ""
+    assert result.tag == "_NERO"
     assert result.warnings == ()
+
+
+def test_energy_method_records_the_detector():
+    result = setup(detector="BLU")
+
+    assert result.provenance["digitization_method"] == "energy"
+    assert result.provenance["detector"] == "BLU"
+    assert result.tag == "_BLU"
+
+
+@pytest.mark.parametrize("with_a_file", [False, True])
+def test_detector_is_required_with_both_methods(with_a_file, factors_file):
+    with pytest.raises(ValueError, match="--detector is required"):
+        if with_a_file:
+            with_file(factors_file, detector=None)
+        else:
+            setup(detector=None)
+
+
+def test_unknown_detector_is_rejected_with_the_energy_method():
+    with pytest.raises(ValueError, match="unknown detector"):
+        setup(detector="GIALLO")
 
 
 def test_explicit_single_factor():
@@ -236,17 +260,9 @@ def test_bad_single_factor_is_rejected(value):
         setup(pe_per_mev=value)
 
 
-@pytest.mark.parametrize(
-    "overrides",
-    [{"detector": "ROSSO"}, {"run_range": (1, 2)}],
-)
-def test_detector_or_run_range_without_file_is_rejected(overrides):
+def test_run_range_without_file_is_rejected():
     with pytest.raises(ValueError, match="can only be used together"):
-        setup(**overrides)
-
-def test_file_requires_detector(factors_file):
-    with pytest.raises(ValueError, match="requires --detector"):
-        with_file(factors_file, detector=None)
+        setup(run_range=(1, 2))
 
 
 def test_unknown_detector_is_rejected(factors_file):
@@ -446,7 +462,27 @@ def cli():
 
 
 def test_cli_pe_per_mev_defaults_to_none():
-    assert cli().parse_arguments(["hits.root"]).pe_per_mev is None
+    assert cli().parse_arguments(["hits.root", "--detector", "NERO"]).pe_per_mev is None
+
+
+def test_cli_requires_the_detector():
+    with pytest.raises(SystemExit):
+        cli().parse_arguments(["hits.root"])
+
+
+def test_cli_file_option_without_a_path_is_the_packaged_calibration():
+    from simReco_muraves.detector import packaged_calibration_file
+
+    arguments = cli().parse_arguments(["hits.root", "--pe-per-cm-file", "--detector", "NERO"])
+
+    assert arguments.pe_per_cm_file == packaged_calibration_file()
+    assert arguments.pe_per_cm_file.is_file()
+
+
+def test_cli_file_option_with_a_path_keeps_it():
+    arguments = cli().parse_arguments(["hits.root", "--pe-per-cm-file", "mine.json", "--detector", "NERO"])
+
+    assert arguments.pe_per_cm_file == Path("mine.json")
 
 
 def test_cli_detector_is_case_insensitive():
@@ -473,7 +509,7 @@ def test_cli_detector_is_case_insensitive():
 )
 def test_cli_rejects_bad_values(extra):
     with pytest.raises(SystemExit):
-        cli().parse_arguments(["hits.root", *extra])
+        cli().parse_arguments(["hits.root", "--detector", "NERO", *extra])
 
 def test_file_option_gives_a_landau_digitizer(tmp_path):
     result = setup(

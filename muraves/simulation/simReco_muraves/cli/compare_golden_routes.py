@@ -350,10 +350,10 @@ def run_both_routes(
         PROXIMITY_CUT_XZ,
         SIGMA_Y,
         SIGMA_Z,
-        X_POS,
-        Y_ADD,
-        Z_ADD,
     )
+    from simReco_muraves.detector import detector_for, tracking_geometry
+
+    geometry = tracking_geometry(detector_for([clustered_file], None))
 
     work_dir.mkdir(parents=True, exist_ok=True)
 
@@ -375,9 +375,9 @@ def run_both_routes(
 
     results = run_tracking_pipeline(
         clusters,
-        x_pos=X_POS,
-        z_add=Z_ADD,
-        y_add=Y_ADD,
+        x_pos=geometry.x_pos,
+        z_add=geometry.z_add,
+        y_add=geometry.y_add,
         sigma_z=SIGMA_Z,
         sigma_y=SIGMA_Y,
         proximity_cut_xz=PROXIMITY_CUT_XZ,

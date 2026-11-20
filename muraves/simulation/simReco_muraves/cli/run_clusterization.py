@@ -25,6 +25,7 @@ from simReco_muraves.io.provenance_tree import (
 from simReco_muraves.io.root_reader import RootReader
 from simReco_muraves.io.root_writer import RootWriter
 from simReco_muraves.clustering.seeding import SEEDING_SCHEME
+from simReco_muraves.detector import packaged_calibration_file
 from simReco_muraves.clustering.conversion_factors import (
     DETECTORS,
     digitization_setup,
@@ -79,9 +80,9 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         "--output-prefix",
         default=None,
         help=(
-            "Chunk filename prefix "
-            "(default: <input stem>_clustered, with the detector and "
-            "run range inserted when --pe-per-cm-file is used)."
+            "Chunk filename prefix (default: <input stem>_<detector>"
+            "_clustered, with the run range added after the detector "
+            "when --pe-per-cm-file is used)."
         ),
     )
 
@@ -99,12 +100,16 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--pe-per-cm-file",
         type=Path,
+        nargs="?",
+        const=packaged_calibration_file(),
         default=None,
+        metavar="FILE",
         help=(
-            "Path-length method: Read per-plane yields from a file. "
-            "Requires --detector, --run-range is optional, without "
-            "run-range detector's fallback setting is used(NERO and "
-            "BLU wp25_a, ROSSO wp25_b)."
+            "Path-length method: per-plane NPE/cm from a calibration file "
+            "for --detector; without FILE, the calibration shipped in "
+            "muraves_lib/configuration/simulation/. --run-range is "
+            "optional; without it, the detector's fallback setting is "
+            "used (NERO and BLU wp25_a, ROSSO wp25_b)."
         ),
     )
 
@@ -112,8 +117,12 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         "--detector",
         type=str.upper,
         choices=DETECTORS,
-        default=None,
-        help="Detector whose calibration to use. Only with --pe-per-cm-file.",
+        required=True,
+        help=(
+            "Simulated detector (required). Recorded in provenance: the "
+            "tracking and golden stages reconstruct with its geometry. "
+            "With --pe-per-cm-file, also selects its calibration."
+        ),
     )
 
     parser.add_argument(
@@ -182,6 +191,7 @@ def print_configuration(arguments: argparse.Namespace) -> None:
     else:
         print("Method         = energy x Poisson")
         print(f"PE per MeV     = {setup.factors}")
+        print(f"Detector       = {provenance['detector']}")
 
     print(f"RNG seed       = {arguments.rng_seed}")
     print(f"Seeding        = {SEEDING_SCHEME}")

@@ -37,9 +37,10 @@ Usage: run_chain.sh -o OUTDIR [-i INPUT] [options] [-- CLUSTER_OPTIONS]
   -h         Show this help.
 
   -- CLUSTER_OPTIONS
-             Everything after -- is passed to muraves-simCluster, e.g.
-             the digitization method, calibration and seed. Without
-             it, muraves-simCluster's defaults apply. Its output
+             Everything after -- is passed to muraves-simCluster:
+             --detector (required) and, e.g., the digitization method,
+             calibration and seed. The later stages take the detector
+             from the clustered files' provenance. Its output
              options (-o, --output-dir, --output-prefix) are set by
              this script and cannot be passed.
 
@@ -49,11 +50,10 @@ same command. If a run was killed while a file was being written,
 delete that one output before resuming.
 
 Examples:
-  run_chain.sh -i /data/sim/hits_full.root -o /data/sim/chain_v2 -j 4 -c
+  run_chain.sh -i /data/sim/hits_full.root -o /data/sim/chain_v2 -j 4 -c -- --detector NERO
   run_chain.sh -o /data/sim/chain_v2 -s golden -j 4
   run_chain.sh -i /data/sim/hits_full.root -o /data/sim/chain_npecm -j 4 \
-      -- --pe-per-cm-file calibration/npecm_per_run_v1.json \
-         --detector NERO --run-range 5710-5759
+      -- --pe-per-cm-file --detector NERO --run-range 5710-5759
 EOF
 }
 

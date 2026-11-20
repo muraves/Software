@@ -344,31 +344,37 @@ def digitization_setup(
     """
     Apply the rules between the options and pick the digitization method.
 
+    --detector is required with both methods. It names the simulated
+    detector, whose geometry the later stages reconstruct with (they read
+    it from provenance), and it goes into the output names.
+
     Without --pe-per-cm-file, the energy method is used: one nPE per MeV
     for every plane, from --pe-per-mev, if given, else the default.
-    --detector and --run-range are rejected.
+    --run-range is rejected.
 
     With --pe-per-cm-file, the path-length method is used: per-station
-    NPE/cm from the good-run file.
-    --detector is required. --run-range is optional; without it, the
-    detector's fallback setting is used, with a warning. Giving
-    --pe-per-mev as well is an error, since the two options select
-    different methods.
+    NPE/cm from the good-run file, for --detector. --run-range is
+    optional; without it, the detector's fallback setting is used, with a
+    warning. Giving --pe-per-mev as well is an error, since the two
+    options select different methods.
 
     """
-    if pe_per_cm_file is None:
-        stray = [
-            name
-            for name, value in (
-                ("--detector", detector),
-                ("--run-range", run_range),
-            )
-            if value is not None
-        ]
+    if detector is None:
+        raise ValueError(
+            "--detector is required: it names the simulated detector, "
+            "whose geometry the reconstruction uses"
+        )
 
-        if stray:
+    if detector not in DETECTORS:
+        raise ValueError(
+            f"unknown detector {detector!r}; expected one of "
+            f"{', '.join(DETECTORS)}"
+        )
+
+    if pe_per_cm_file is None:
+        if run_range is not None:
             raise ValueError(
-                f"{' and '.join(stray)} can only be used together with "
+                "--run-range can only be used together with "
                 "--pe-per-cm-file; without a file it would have no "
                 "effect"
             )
@@ -384,26 +390,17 @@ def digitization_setup(
                 "pe_per_mev": factor,
                 "pe_per_cm_file": None,
                 "pe_per_cm_file_sha256": None,
-                "detector": None,
+                "detector": detector,
                 "run_range": None,
                 "pe_per_cm_by_station": None,
                 "calibration": None,
             },
+            tag=f"_{detector}",
         )
 
     if pe_per_mev is not None:
         raise ValueError(
             "--pe-per-mev and --pe-per-cm-file select two different digitization methods; give only one"
-        )
-
-    if detector is None:
-        raise ValueError("--pe-per-cm-file requires --detector")
-
-
-    if detector not in DETECTORS:
-        raise ValueError(
-            f"unknown detector {detector!r}; expected one of "
-            f"{', '.join(DETECTORS)}"
         )
 
     path = Path(pe_per_cm_file).expanduser().resolve()
