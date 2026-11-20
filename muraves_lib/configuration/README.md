@@ -8,7 +8,7 @@ chain that uses them:
 configuration/
 ├── shared/       used by both the data and the simulation chains
 ├── data/         used only by the data chain (muraves/tracks_reconstruction)
-└── simulation/   used only by the simulation chain (empty for now)
+└── simulation/   used only by the simulation chain (digitization settings, NPE/cm calibration)
 ```
 
 Workflow *run* settings (input/output paths, batch size, threads, cluster profile) are
@@ -20,13 +20,14 @@ not here: they stay next to each workflow, e.g. `muraves/tracks_reconstruction/c
 |---|---|
 | `shared/reco_parameters.json` | `detector_geometry`, `reconstruction`, `strips`, `cluster_lists`, `tracking` |
 | `data/data_parameters.json` | `electronics`, `raw_files`, `read_event`, `pedestals`, `slow_control`, `data_runtime` |
+| `simulation/simulation_parameters.json` | `digitization` |
 
 They are loaded with `muraves_lib.reco.reco_config.get_reco_config(chain=...)`, which
 merges, in order:
 
 1. `shared/reco_parameters.json`;
 2. the file of the chain (`chain="data"` → `data/data_parameters.json`;
-   `chain="simulation"` → `simulation/simulation_parameters.json`, once it exists);
+   `chain="simulation"` → `simulation/simulation_parameters.json`);
 3. an optional base file (`--base-config`);
 4. an optional override file (`--config`, or `reco_override_file` in the workflow's `config.yaml`).
 
