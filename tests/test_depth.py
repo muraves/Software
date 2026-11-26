@@ -134,9 +134,9 @@ def test_bad_orientation_value_in_config():
 
 
 EXPECTED = {
-    # data: enabled, orientation measured on v1 data; simulation: disabled until the sim chain is wired
+    # data: enabled, orientation measured on v1 data; simulation: no section until the sim chain is wired
     "data": (True, {h: {"z": 1, "y": -1} for h in ("NERO", "BLU", "ROSSO")}),
-    "simulation": (False, {h: {"z": None, "y": None} for h in ("NERO", "BLU", "ROSSO")}),
+    "simulation": (None, {h: {"z": None, "y": None} for h in ("NERO", "BLU", "ROSSO")}),
 }
 
 
@@ -144,7 +144,7 @@ EXPECTED = {
 def test_package_configuration(chain):
     cfg = get_reco_config(chain=chain)
     enabled, orientation = EXPECTED[chain]
-    assert cfg["depth_correction"]["enabled"] is enabled
+    assert cfg.get("depth_correction", {}).get("enabled") is enabled
     for hodoscope, views in orientation.items():
         for view, value in views.items():
             assert face_orientation_for(cfg, hodoscope, view) == value

@@ -8,7 +8,7 @@ chain that uses them:
 configuration/
 ├── shared/       used by both the data and the simulation chains
 ├── data/         used only by the data chain (muraves/tracks_reconstruction)
-└── simulation/   used only by the simulation chain
+└── simulation/   used only by the simulation chain (empty for now)
 ```
 
 Workflow *run* settings (input/output paths, batch size, threads, cluster profile) are
@@ -20,14 +20,13 @@ not here: they stay next to each workflow, e.g. `muraves/tracks_reconstruction/c
 |---|---|
 | `shared/reco_parameters.json` | `detector_geometry`, `reconstruction`, `strips`, `cluster_lists`, `tracking` |
 | `data/data_parameters.json` | `electronics`, `raw_files`, `read_event`, `pedestals`, `slow_control`, `data_runtime`, `depth_correction` |
-| `simulation/simulation_parameters.json` | `depth_correction` |
 
 They are loaded with `muraves_lib.reco.reco_config.get_reco_config(chain=...)`, which
 merges, in order:
 
 1. `shared/reco_parameters.json`;
 2. the file of the chain (`chain="data"` → `data/data_parameters.json`;
-   `chain="simulation"` → `simulation/simulation_parameters.json`);
+   `chain="simulation"` → `simulation/simulation_parameters.json`, once it exists);
 3. an optional base file (`--base-config`);
 4. an optional override file (`--config`, or `reco_override_file` in the workflow's `config.yaml`).
 
@@ -37,7 +36,7 @@ exist in 1 + 2, so a misspelled or misplaced key stops the job instead of being 
 JSON has no comments: keys starting with `_` (`_about`, `_note`) are documentation and
 are ignored by the code.
 
-## `depth_correction` (data and simulation)
+## `depth_correction` (data)
 
 Method B for 2-bar clusters ("depth correction"). The bars are triangles with alternating
 orientation, so a cluster of two adjacent strips measures where the muon crosses the face
@@ -53,13 +52,13 @@ sign_k = +1 if k is even else -1
 Xc     = -face_orientation * sign_k * (h/p) * (z_c - B)      # |Xc| <= h/2
 ```
 
-The section is defined in each chain file, because the face orientation differs between
-the real detector and the simulation (the data Y view is mirrored).
+The section belongs to each chain file, because the face orientation differs between the
+real detector and the simulation (the data Y view is mirrored). For now only the data chain
+has it; the simulation chain gets its own section (+1 in both views) when it passes the
+depths to `MakeTracks`. Without the section, no depth is applied.
 
-- `enabled`: `true` in the data chain (since 2026-11-26), `false` in the simulation chain until
-  that chain passes the depths to `MakeTracks`. `false` gives exactly the reconstruction
-  without depths. When `true`, every
-  track quantity (P2 candidate cut, 3p/4p fits, residues, P4 displacement, scattering
+- `enabled`: `true` (since 2026-11-26). `false` gives exactly the reconstruction without
+  depths. When `true`, every track quantity (P2 candidate cut, 3p/4p fits, residues, P4 displacement, scattering
   angle) uses the depths, and the depth used for each cluster is written in the
   `ClusterDepth_{Z,Y}{1..4}` branches [m] (always written, 0 when not applied).
 - `face_orientation.<hodoscope>.<view>`: `+1` when an (even, odd) strip pair shares a "\"
@@ -67,7 +66,7 @@ the real detector and the simulation (the data Y view is mirrored).
   measured, so that hodoscope/view gets no depth. It is measured from the parity of the
   lower strip of the 2-bar clusters of steep tracks: at slope ≥ +0.8, an even lower strip
   dominates for `+1`, an odd one for `−1`. Data (v1, NERO, BLU and ROSSO, all four planes):
-  Z +1, Y −1 (93–96 % dominance). Simulation: +1 in both views.
+  Z +1, Y −1 (93–96 % dominance). Simulation (Geant4 geometry): +1 in both views.
 
 The ratio h/p (bar height / pitch) is fixed to the nominal geometric value 1/0.97 for now;
 the data prefer a smaller value (about 0.7, MC about 0.85), to be studied before making it a
