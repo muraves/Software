@@ -1,7 +1,7 @@
 """Tests of muraves_lib.reco.depth (method B: depth of 2-bar clusters).
 
 Run inside the muraves container:
-    python -m pytest tests/
+    python -m pytest muraves_lib/reco/tests
 """
 
 from __future__ import annotations

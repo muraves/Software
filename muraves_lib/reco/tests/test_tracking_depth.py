@@ -6,7 +6,7 @@ With the depths from cluster_depths the fit must recover the track exactly; with
 same clusters do not lie on a line.
 
 Run inside the muraves container:
-    python -m pytest tests/
+    python -m pytest muraves_lib/reco/tests
 """
 
 from __future__ import annotations

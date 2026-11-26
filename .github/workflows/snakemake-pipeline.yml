@@ -63,6 +63,9 @@ jobs:
              python -m pip install awkward-pandas && \
              python -c \"import sys; print('PYTHON_EXE=', sys.executable)\" && \
              python -c \"import muraves_lib; print('muraves_lib import OK')\" && \
+             echo '=== Unit tests of the reconstruction core (muraves_lib/reco/tests) ===' && \
+             python -m pip install --quiet pytest && \
+             (cd /workspace && python -m pytest muraves_lib/reco/tests -p no:cacheprovider -v) && \
              echo '=== Starting Snakemake ===' && \
              snakemake --cores 1 --printshellcmds --show-failed-logs 2>&1 | tee /tmp/snakemake.log && \
              if grep -Eq '\\[ERROR\\]|Traceback' /tmp/snakemake.log; then \
