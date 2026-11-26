@@ -108,9 +108,34 @@ def MakeTracks(
     sigma: float,
     tracking_cfg: dict | None = None,
     strips_cfg: dict | None = None,
+    depth_1: Sequence[float] | None = None,
+    depth_2: Sequence[float] | None = None,
+    depth_3: Sequence[float] | None = None,
+    depth_4: Sequence[float] | None = None,
 ) -> TracksCollection:
-    """Python port of MakeTracks from Tracking.cc."""
+    """Python port of MakeTracks from Tracking.cc.
+
+    ``depth_<plane>`` (method B, ``muraves_lib.reco.depth.cluster_depths``): depth Xc [m] of
+    each cluster of the plane w.r.t. the plane centre. A cluster is then the 2D point
+    ``(X_pos[plane] + Xc, position + Z_add[plane])`` everywhere: P2 candidate prediction and
+    proximity cut, 3p fit and residues, prediction on P4, 4p fit, residues and scattering
+    angle. Residues are measured at that point. The P4 acceptance check
+    (``ExpectedPosition_OnPlane4th``) stays at the plane centre. ``None`` means all depths are
+    0, which gives exactly the reconstruction without depths.
+    """
     del Texp_cl4  # kept for signature compatibility with C++
+
+    def _depths(depth: Sequence[float] | None, clusters: Sequence[float], name: str) -> Sequence[float]:
+        if depth is None:
+            return [0.0] * len(clusters)
+        if len(depth) != len(clusters):
+            raise ValueError(f"{name} has {len(depth)} entries for {len(clusters)} clusters")
+        return depth
+
+    depth_1 = _depths(depth_1, clusters_1, "depth_1")
+    depth_2 = _depths(depth_2, clusters_2, "depth_2")
+    depth_3 = _depths(depth_3, clusters_3, "depth_3")
+    depth_4 = _depths(depth_4, clusters_4, "depth_4")
 
     cfg = tracking_cfg if tracking_cfg is not None else get_reco_config()["tracking"]
     strips = strips_cfg if strips_cfg is not None else get_reco_config()["strips"]
@@ -179,7 +204,7 @@ def MakeTracks(
         ntrack_cl1_4p = 0
 
         p1 = clusters_1[i] + Z_add[0]
-        x1 = X_pos[0]
+        x1 = X_pos[0] + depth_1[i]
 
         n_track_cl3_vector: list[int] = []
         n_track_cl3_vector_4p: list[int] = []
@@ -189,13 +214,13 @@ def MakeTracks(
             ntrack_cl3_4p = 0
 
             p3 = clusters_3[k] + Z_add[2]
-            x3 = X_pos[2]
+            x3 = X_pos[2] + depth_3[k]
 
             n_track_cl2_vector: list[int] = []
             n_track_cl2_vector_4p: list[int] = []
 
             for j in range(len(clusters_2)):
-                x2 = X_pos[1]
+                x2 = X_pos[1] + depth_2[j]
                 exp_m = (p1 - p3) / (x1 - x3)
                 exp_q = p1 - ((p1 - p3) / (x1 - x3)) * x1
                 exp_p2 = exp_m * x2 + exp_q
@@ -255,7 +280,7 @@ def MakeTracks(
                     single_track_energy_4p: list[float] = []
                     theta_scatter: list[float] = []
 
-                    x4 = X_pos[3]
+                    x4 = X_pos[3]  # P4 acceptance: at the plane centre (no cluster chosen yet)
                     exp_p4 = fit3p_intercept + x4 * fit3p_slope
                     _exp_p4_err = math.sqrt(intercept_error * intercept_error + x4 * x4 * slope_error * slope_error)
 
@@ -271,7 +296,11 @@ def MakeTracks(
                         else:
                             n_track_cl2_vector_4p.append(0)
 
-                        res_p4_allowed = [clusters_4[h] - exp_p4 for h in range(len(clusters_4))]
+                        # displacement of each P4 cluster from the 3p track, at the cluster's own depth
+                        res_p4_allowed = [
+                            clusters_4[h] - (fit3p_intercept + (X_pos[3] + depth_4[h]) * fit3p_slope)
+                            for h in range(len(clusters_4))
+                        ]
                         ntracks_4p.append(len(res_p4_allowed))
 
                         sorted_indices = sorted(
@@ -284,7 +313,9 @@ def MakeTracks(
                         single_displacement_p4 = [res_p4_allowed[idx] for idx in sorted_indices]
 
                         for cl4, p4 in enumerate(sorted_res_p4_allowed):
-                            x_4p = [x1, x2, x3, x4]
+                            idx_for_energy = sorted_indices[cl4]
+                            x4_cl = X_pos[3] + depth_4[idx_for_energy]
+                            x_4p = [x1, x2, x3, x4_cl]
                             p_4p = [p1, p2, p3, p4]
                             fit4p_intercept, fit4p_slope, fit4p_chi_square, _, _ = _linear_fit_with_known_sigma(
                                 x_4p, p_4p, sigma
@@ -297,22 +328,22 @@ def MakeTracks(
                             single_residue_c1_p4.append(p1 - fit4p_intercept - fit4p_slope * x1)
                             single_residue_c2_p4.append(p2 - fit4p_intercept - fit4p_slope * x2)
                             single_residue_c3_p4.append(p3 - fit4p_intercept - fit4p_slope * x3)
-                            single_residue_c4_p4.append(p4 - fit4p_intercept - fit4p_slope * x4)
+                            single_residue_c4_p4.append(p4 - fit4p_intercept - fit4p_slope * x4_cl)
 
-                            idx_for_energy = sorted_indices[cl4]
                             single_track_energy_4p.append(
                                 clustersEn_1[i] + clustersEn_2[j] + clustersEn_3[k] + clustersEn_4[idx_for_energy]
                             )
 
+                            # triangle (3p track at P3, 3p track at P4, P4 cluster), P4 at the cluster's depth
                             side_a = math.sqrt(
-                                (fit3p_intercept + x3 * fit3p_slope - fit3p_intercept - x4 * fit3p_slope)
-                                * (fit3p_intercept + x3 * fit3p_slope - fit3p_intercept - x4 * fit3p_slope)
-                                + (x3 - x4) * (x3 - x4)
+                                (fit3p_intercept + x3 * fit3p_slope - fit3p_intercept - x4_cl * fit3p_slope)
+                                * (fit3p_intercept + x3 * fit3p_slope - fit3p_intercept - x4_cl * fit3p_slope)
+                                + (x3 - x4_cl) * (x3 - x4_cl)
                             )
                             side_b = math.sqrt(
                                 (fit3p_intercept + x3 * fit3p_slope - p4)
                                 * (fit3p_intercept + x3 * fit3p_slope - p4)
-                                + (x3 - x4) * (x3 - x4)
+                                + (x3 - x4_cl) * (x3 - x4_cl)
                             )
 
                             denom = 2.0 * side_a * side_b
@@ -322,8 +353,8 @@ def MakeTracks(
                                 cos_scatt = (
                                     (side_a * side_a)
                                     + (side_b * side_b)
-                                    - (fit3p_intercept + x4 * fit3p_slope - p4)
-                                    * (fit3p_intercept + x4 * fit3p_slope - p4)
+                                    - (fit3p_intercept + x4_cl * fit3p_slope - p4)
+                                    * (fit3p_intercept + x4_cl * fit3p_slope - p4)
                                 ) / denom
                                 cos_scatt = max(-1.0, min(1.0, cos_scatt))
 

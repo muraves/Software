@@ -8,7 +8,7 @@ chain that uses them:
 configuration/
 ├── shared/       used by both the data and the simulation chains
 ├── data/         used only by the data chain (muraves/tracks_reconstruction)
-└── simulation/   used only by the simulation chain (empty for now)
+└── simulation/   used only by the simulation chain
 ```
 
 Workflow *run* settings (input/output paths, batch size, threads, cluster profile) are
@@ -19,14 +19,15 @@ not here: they stay next to each workflow, e.g. `muraves/tracks_reconstruction/c
 | File | Sections |
 |---|---|
 | `shared/reco_parameters.json` | `detector_geometry`, `reconstruction`, `strips`, `cluster_lists`, `tracking` |
-| `data/data_parameters.json` | `electronics`, `raw_files`, `read_event`, `pedestals`, `slow_control`, `data_runtime` |
+| `data/data_parameters.json` | `electronics`, `raw_files`, `read_event`, `pedestals`, `slow_control`, `data_runtime`, `depth_correction` |
+| `simulation/simulation_parameters.json` | `depth_correction` |
 
 They are loaded with `muraves_lib.reco.reco_config.get_reco_config(chain=...)`, which
 merges, in order:
 
 1. `shared/reco_parameters.json`;
 2. the file of the chain (`chain="data"` → `data/data_parameters.json`;
-   `chain="simulation"` → `simulation/simulation_parameters.json`, once it exists);
+   `chain="simulation"` → `simulation/simulation_parameters.json`);
 3. an optional base file (`--base-config`);
 4. an optional override file (`--config`, or `reco_override_file` in the workflow's `config.yaml`).
 
@@ -35,6 +36,21 @@ the shared file is refused. Base and override files may only contain keys that a
 exist in 1 + 2, so a misspelled or misplaced key stops the job instead of being ignored.
 JSON has no comments: keys starting with `_` (`_about`, `_note`) are documentation and
 are ignored by the code.
+
+## `depth_correction` (data and simulation)
+
+Method B for 2-bar clusters: the cluster is fitted at the depth `Xc` where the muon crosses
+the face shared by the two bars, instead of at the plane centre (see
+`dev/z_residual_shape/METHOD_B_IMPLEMENTATION_PLAN.md`). It is defined in each chain file,
+because the face orientation differs between the real detector and the simulation (the data
+Y view is mirrored).
+
+- `enabled`: `false` gives exactly the reconstruction without depths.
+- `face_orientation.<hodoscope>.<view>`: `+1` when an (even, odd) strip pair shares a "\"
+  face (dz/dx ≈ −0.97), as in the simulated geometry; `−1` when mirrored; `null` when not
+  measured, so that hodoscope/view gets no depth.
+
+The ratio h/p (bar height / pitch) is fixed to the nominal geometric value 1/0.97 for now.
 
 ## Data-only files
 

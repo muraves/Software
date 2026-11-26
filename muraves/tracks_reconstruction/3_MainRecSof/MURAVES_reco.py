@@ -13,6 +13,7 @@ from ReadEvent import ReadEvent
 from muraves_lib.reco.cluster_lists import CreateClusterList, DeterministicSmearingRNG
 from muraves_lib.reco.angular_coordinates import TrackAngularCoordinates
 from muraves_lib.reco.tracking import MakeTracks
+from muraves_lib.reco.depth import cluster_depths, face_orientation_for
 from muraves_lib.reco.reco_config import (
     get_reco_config,
     package_config_paths,
@@ -232,19 +233,19 @@ _SHARED_COUNTER_GROUPS: dict[str, list[str]] = {
     # ValueError (or worse, silently wrong data) at write time -- verified mismatch on
     # 1483-2036 out of 40000 events depending on plane/projection.
     "ClusterGroup_Z1": [
-        "ClusterSize_Z1", "ClusterZ1_Texp", "ClusterEnergy_Z1", "ClusterPosition_Z1",
+        "ClusterSize_Z1", "ClusterZ1_Texp", "ClusterEnergy_Z1", "ClusterPosition_Z1", "ClusterDepth_Z1",
         "isInTrack_3p_clZ1", "isInTrack_4p_clZ1",
     ],
-    "ClusterGroup_Z2": ["ClusterSize_Z2", "ClusterZ2_Texp", "ClusterEnergy_Z2", "ClusterPosition_Z2"],
-    "ClusterGroup_Z3": ["ClusterSize_Z3", "ClusterZ3_Texp", "ClusterEnergy_Z3", "ClusterPosition_Z3"],
-    "ClusterGroup_Z4": ["ClusterSize_Z4", "ClusterZ4_Texp", "ClusterEnergy_Z4", "ClusterPosition_Z4"],
+    "ClusterGroup_Z2": ["ClusterSize_Z2", "ClusterZ2_Texp", "ClusterEnergy_Z2", "ClusterPosition_Z2", "ClusterDepth_Z2"],
+    "ClusterGroup_Z3": ["ClusterSize_Z3", "ClusterZ3_Texp", "ClusterEnergy_Z3", "ClusterPosition_Z3", "ClusterDepth_Z3"],
+    "ClusterGroup_Z4": ["ClusterSize_Z4", "ClusterZ4_Texp", "ClusterEnergy_Z4", "ClusterPosition_Z4", "ClusterDepth_Z4"],
     "ClusterGroup_Y1": [
-        "ClusterSize_Y1", "ClusterY1_Texp", "ClusterEnergy_Y1", "ClusterPosition_Y1",
+        "ClusterSize_Y1", "ClusterY1_Texp", "ClusterEnergy_Y1", "ClusterPosition_Y1", "ClusterDepth_Y1",
         "isInTrack_3p_clY1", "isInTrack_4p_clY1",
     ],
-    "ClusterGroup_Y2": ["ClusterSize_Y2", "ClusterY2_Texp", "ClusterEnergy_Y2", "ClusterPosition_Y2"],
-    "ClusterGroup_Y3": ["ClusterSize_Y3", "ClusterY3_Texp", "ClusterEnergy_Y3", "ClusterPosition_Y3"],
-    "ClusterGroup_Y4": ["ClusterSize_Y4", "ClusterY4_Texp", "ClusterEnergy_Y4", "ClusterPosition_Y4"],
+    "ClusterGroup_Y2": ["ClusterSize_Y2", "ClusterY2_Texp", "ClusterEnergy_Y2", "ClusterPosition_Y2", "ClusterDepth_Y2"],
+    "ClusterGroup_Y3": ["ClusterSize_Y3", "ClusterY3_Texp", "ClusterEnergy_Y3", "ClusterPosition_Y3", "ClusterDepth_Y3"],
+    "ClusterGroup_Y4": ["ClusterSize_Y4", "ClusterY4_Texp", "ClusterEnergy_Y4", "ClusterPosition_Y4", "ClusterDepth_Y4"],
 
     # Per-plane strip branches (flattened nested lists, see encode_nested()). There is no
     # pre-existing explicit "total strip count" field for these, but the 3 branches always
@@ -612,7 +613,18 @@ def run_reconstruction(
     cluster_lists_cfg = cfg["cluster_lists"]
     read_events_cfg = cfg["read_event"]
     tracking_cfg = cfg["tracking"]
-    # additional parameter available in C++ but not used: 
+
+    # DEPTH OF 2-BAR CLUSTERS (method B, muraves_lib.reco.depth): None = no depths for that view
+    first_strip_pos = float(strips_cfg["first_strip_pos"])
+    strip_pitch = float(strips_cfg["adjacent_strips_distance"])
+    face_orientation_z = face_orientation_for(cfg, color, "z")
+    face_orientation_y = face_orientation_for(cfg, color, "y")
+    print(
+        f"Depth of 2-bar clusters in the track fit: "
+        f"Z view {'off' if face_orientation_z is None else f'on (face_orientation {face_orientation_z:+d})'}, "
+        f"Y view {'off' if face_orientation_y is None else f'on (face_orientation {face_orientation_y:+d})'}"
+    )
+    # additional parameter available in C++ but not used:
     #const int nInfo = 168;
     #const int nChInfo = 5;
     #const double FirstStripPos = -0.528;
@@ -1054,6 +1066,17 @@ def run_reconstruction(
 ####################################################################################################################################
 ############################################ DEEPLEY CHECKED UP TO HERE ############################################################
 ####################################################################################################################################
+            # Depth Xc of each cluster (non-zero only for 2-bar clusters, and only when the view's
+            # correction is on); the track fit uses the point (x_pos + Xc, position + add).
+            depths_z = [
+                cluster_depths(r.ClustersPositions, r.ClustersSize, first_strip_pos, strip_pitch, face_orientation_z)
+                for r in (results_p1x, results_p2x, results_p3x, results_p4x)
+            ]
+            depths_y = [
+                cluster_depths(r.ClustersPositions, r.ClustersSize, first_strip_pos, strip_pitch, face_orientation_y)
+                for r in (results_p1y, results_p2y, results_p3y, results_p4y)
+            ]
+
             tracks_xz = MakeTracks(
                 results_p1x.ClustersPositions,
                 results_p2x.ClustersPositions,
@@ -1073,6 +1096,10 @@ def run_reconstruction(
                 sigma_z,
                 tracking_cfg=tracking_cfg,
                 strips_cfg=strips_cfg,
+                depth_1=depths_z[0],
+                depth_2=depths_z[1],
+                depth_3=depths_z[2],
+                depth_4=depths_z[3],
             )
             tracks_xy = MakeTracks(
                 results_p1y.ClustersPositions,
@@ -1093,6 +1120,10 @@ def run_reconstruction(
                 sigma_y,
                 tracking_cfg=tracking_cfg,
                 strips_cfg=strips_cfg,
+                depth_1=depths_y[0],
+                depth_2=depths_y[1],
+                depth_3=depths_y[2],
+                depth_4=depths_y[3],
             )
 
             ntracks_3p_xz = len(tracks_xz.intercepts_3p)
@@ -1299,6 +1330,10 @@ def run_reconstruction(
                 "ClusterPosition_Z2": results_p2x.ClustersPositions,
                 "ClusterPosition_Z3": results_p3x.ClustersPositions,
                 "ClusterPosition_Z4": results_p4x.ClustersPositions,
+                "ClusterDepth_Z1": depths_z[0],
+                "ClusterDepth_Z2": depths_z[1],
+                "ClusterDepth_Z3": depths_z[2],
+                "ClusterDepth_Z4": depths_z[3],
 
 
                 "ClusterSize_Y1": results_p1y.ClustersSize,
@@ -1317,6 +1352,10 @@ def run_reconstruction(
                 "ClusterPosition_Y2": results_p2y.ClustersPositions,
                 "ClusterPosition_Y3": results_p3y.ClustersPositions,
                 "ClusterPosition_Y4": results_p4y.ClustersPositions,
+                "ClusterDepth_Y1": depths_y[0],
+                "ClusterDepth_Y2": depths_y[1],
+                "ClusterDepth_Y3": depths_y[2],
+                "ClusterDepth_Y4": depths_y[3],
 
                 "StripsEnergy_Z1": results_p1x.StripsEnergy,
                 "StripsEnergy_Z2": results_p2x.StripsEnergy,

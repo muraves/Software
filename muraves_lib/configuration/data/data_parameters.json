@@ -38,5 +38,15 @@
   "data_runtime": {
     "_note": "Command-line defaults of MURAVES_reco.py.",
     "progress_every_default": 1000
+  },
+  "depth_correction": {
+    "_note": "Method B (dev/z_residual_shape/METHOD_B_IMPLEMENTATION_PLAN.md): a 2-bar cluster is fitted at the depth Xc where the muon crosses the face shared by the two bars, Xc = -face_orientation * sign_k * (h/p) * (z_c - B), with k the lower strip, sign_k = +1 for k even, B the boundary of the pair; other cluster sizes keep Xc = 0. enabled: false gives exactly the reconstruction without depths.",
+    "enabled": false,
+    "_face_orientation_note": "Per hodoscope and view: +1 when an (even, odd) strip pair shares a '\\' face (dz/dx ~ -0.97), as in the simulated geometry; -1 when mirrored; null = not measured, no depth for that hodoscope/view. Measured from the dominant parity of the lower strip of 2-bar clusters at slope >= +0.8 (NERO: Z even dominates, Y odd dominates).",
+    "face_orientation": {
+      "NERO": {"z": 1, "y": -1},
+      "BLU": {"z": null, "y": null},
+      "ROSSO": {"z": null, "y": null}
+    }
   }
 }
