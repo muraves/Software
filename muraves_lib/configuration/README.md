@@ -56,7 +56,9 @@ Xc     = -face_orientation * sign_k * (h/p) * (z_c - B)      # |Xc| <= h/2
 The section is defined in each chain file, because the face orientation differs between
 the real detector and the simulation (the data Y view is mirrored).
 
-- `enabled`: `false` gives exactly the reconstruction without depths. When `true`, every
+- `enabled`: `true` in the data chain (since 2026-11-26), `false` in the simulation chain until
+  that chain passes the depths to `MakeTracks`. `false` gives exactly the reconstruction
+  without depths. When `true`, every
   track quantity (P2 candidate cut, 3p/4p fits, residues, P4 displacement, scattering
   angle) uses the depths, and the depth used for each cluster is written in the
   `ClusterDepth_{Z,Y}{1..4}` branches [m] (always written, 0 when not applied).

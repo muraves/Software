@@ -133,12 +133,20 @@ def test_bad_orientation_value_in_config():
         face_orientation_for(_config(True, {"NERO": {"z": 2, "y": -1}}), "NERO", "z")
 
 
+EXPECTED = {
+    # data: enabled, orientation measured on v1 data; simulation: disabled until the sim chain is wired
+    "data": (True, {h: {"z": 1, "y": -1} for h in ("NERO", "BLU", "ROSSO")}),
+    "simulation": (False, {h: {"z": None, "y": None} for h in ("NERO", "BLU", "ROSSO")}),
+}
+
+
 @pytest.mark.parametrize("chain", ["data", "simulation"])
 def test_package_configuration(chain):
     cfg = get_reco_config(chain=chain)
-    assert cfg["depth_correction"]["enabled"] is False
-    for hodoscope in ("NERO", "BLU", "ROSSO"):
-        for view in ("z", "y"):
-            assert face_orientation_for(cfg, hodoscope, view) is None  # disabled by default
+    enabled, orientation = EXPECTED[chain]
+    assert cfg["depth_correction"]["enabled"] is enabled
+    for hodoscope, views in orientation.items():
+        for view, value in views.items():
+            assert face_orientation_for(cfg, hodoscope, view) == value
     strips = cfg["strips"]
     assert strips["first_strip_pos"] == C0 and strips["adjacent_strips_distance"] == PITCH
