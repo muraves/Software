@@ -39,18 +39,43 @@ are ignored by the code.
 
 ## `depth_correction` (data and simulation)
 
-Method B for 2-bar clusters: the cluster is fitted at the depth `Xc` where the muon crosses
-the face shared by the two bars, instead of at the plane centre (see
-`dev/z_residual_shape/METHOD_B_IMPLEMENTATION_PLAN.md`). It is defined in each chain file,
-because the face orientation differs between the real detector and the simulation (the data
-Y view is mirrored).
+Method B for 2-bar clusters ("depth correction"). The bars are triangles with alternating
+orientation, so a cluster of two adjacent strips measures where the muon crosses the face
+shared by the two bars: a 2D point at the depth `Xc` inside the plane, not a point at the
+plane centre. With this correction the track fit places each 2-bar cluster at
+`x_pos + Xc`; clusters of any other size stay at the plane centre. `Xc` comes from the
+cluster position and the bar geometry only (`muraves_lib/reco/depth.py`):
 
-- `enabled`: `false` gives exactly the reconstruction without depths.
+```
+k      = floor((z_c - first_strip_pos) / pitch)     # lower strip of the pair
+B      = first_strip_pos + (k + 1/2) * pitch        # shared face at the plane centre
+sign_k = +1 if k is even else -1
+Xc     = -face_orientation * sign_k * (h/p) * (z_c - B)      # |Xc| <= h/2
+```
+
+The section is defined in each chain file, because the face orientation differs between
+the real detector and the simulation (the data Y view is mirrored).
+
+- `enabled`: `false` gives exactly the reconstruction without depths. When `true`, every
+  track quantity (P2 candidate cut, 3p/4p fits, residues, P4 displacement, scattering
+  angle) uses the depths, and the depth used for each cluster is written in the
+  `ClusterDepth_{Z,Y}{1..4}` branches [m] (always written, 0 when not applied).
 - `face_orientation.<hodoscope>.<view>`: `+1` when an (even, odd) strip pair shares a "\"
   face (dz/dx ≈ −0.97), as in the simulated geometry; `−1` when mirrored; `null` when not
-  measured, so that hodoscope/view gets no depth.
+  measured, so that hodoscope/view gets no depth. It is measured from the parity of the
+  lower strip of the 2-bar clusters of steep tracks: at slope ≥ +0.8, an even lower strip
+  dominates for `+1`, an odd one for `−1`. Data (v1, NERO, BLU and ROSSO, all four planes):
+  Z +1, Y −1 (93–96 % dominance). Simulation: +1 in both views.
 
-The ratio h/p (bar height / pitch) is fixed to the nominal geometric value 1/0.97 for now.
+The ratio h/p (bar height / pitch) is fixed to the nominal geometric value 1/0.97 for now;
+the data prefer a smaller value (about 0.7, MC about 0.85), to be studied before making it a
+parameter.
+
+Validation (2026-11, h/p = 1/0.97): on 99 NERO good runs the P2 residual σ68 of the best 3p
+track at |slope| 0.8–1.2 goes from 5.07 to 4.60 mm (Z) and from 5.33 to 4.54 mm (Y), and the
+χ² < 2 fraction from 0.632 to 0.675 (Z) and from 0.554 to 0.625 (Y); in MC the slope error
+vs truth goes from 14.0 to 12.7 mrad. In data the Y view gets slightly worse at |slope_xy|
+0.6–0.8 and above 1.5. The number of 3p tracks changes by about −0.15 %.
 
 ## Data-only files
 

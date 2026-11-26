@@ -18,7 +18,7 @@ at the plane centre as before. The track fit then uses the point
 as in the simulated geometry, and -1 when the plane is mirrored. It is set per hodoscope
 and view in the ``depth_correction`` section of the chain configuration files.
 
-Study and decisions: ``dev/z_residual_shape/METHOD_B_IMPLEMENTATION_PLAN.md``.
+Configuration and validation: ``muraves_lib/configuration/README.md`` (``depth_correction``).
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ import math
 from typing import Any, Sequence
 
 # Bar height / strip pitch. The triangle faces have |dz/dx| = 0.97 = pitch / height
-# (Geant4 geometry check, dev/z_residual_shape/truth_bar_geometry_check.py).
+# (checked on the Geant4 geometry of the simulation).
 # TODO: make it a parameter of the depth_correction configuration once the value preferred
 # by the data (about 0.7, MC about 0.85) has been discussed.
 NOMINAL_H_OVER_P = 1.0 / 0.97

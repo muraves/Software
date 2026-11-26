@@ -9,6 +9,7 @@ The core reconstruction modules are shared with the simulation chain and live in
 
 - `muraves_lib/reco/cluster_lists.py` (`CreateClusterList`)
 - `muraves_lib/reco/angular_coordinates.py` (`TrackAngularCoordinates`)
+- `muraves_lib/reco/depth.py` (`cluster_depths`, depth of 2-bar clusters, method B)
 - `muraves_lib/reco/tracking.py` (`MakeTracks`)
 - `muraves_lib/reco/reco_config.py` (configuration loader)
 
@@ -84,6 +85,10 @@ If `--write-root` is used (or `write_root_outputs(...)` is called), it also writ
 Note on nested list branches:
 
 - Some fields that are nested lists (for example `list[list[float]]`) are stored as flattened values in the original branch name, plus a companion branch `<name>__counts` to reconstruct the inner grouping.
+
+Each cluster group also has `ClusterDepth_{Z,Y}{1..4}` [m]: the depth of the cluster used by
+the track fit (`depth_correction` in `muraves_lib/configuration/README.md`; 0 when disabled
+or for clusters that are not 2-bar).
 
 Both files are created in:
 

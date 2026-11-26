@@ -21,7 +21,7 @@ H = NOMINAL_H_OVER_P * PITCH  # bar height
 
 
 def reference_depth(position: float, size: int, h_over_p: float, orientation: int) -> float:
-    """Copy of depth() in dev/z_residual_shape/truth_size2_2dpoint_vs_posttrack.py (scalar form)."""
+    """Copy of the residual-shape study's depth() (truth_size2_2dpoint_vs_posttrack.py), scalar form."""
     k = math.floor((position - C0) / PITCH)
     boundary = C0 + (k + 0.5) * PITCH
     sign = 1.0 if k % 2 == 0 else -1.0
