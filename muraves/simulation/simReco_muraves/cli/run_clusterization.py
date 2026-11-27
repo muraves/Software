@@ -151,7 +151,8 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         type=int,
         default=DEFAULT_CHUNK_SIZE,
         help=(
-            "Clusters per output ROOT chunk "
+            "Clusters per output ROOT chunk; a chunk ends only between "
+            "events, so it can hold one event's clusters more "
             f"(default: {DEFAULT_CHUNK_SIZE})."
         ),
     )

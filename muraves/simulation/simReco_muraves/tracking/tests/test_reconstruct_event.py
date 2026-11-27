@@ -59,18 +59,16 @@ def test_best_3p_index_is_the_best_chi_square(best_chi, best_energy):
 
 
 def test_texp_table_follows_the_candidate_layout():
-    plane4 = [SimpleNamespace(cluster_time=t) for t in (5.0, -1.0, 7.0)]
+    plane4_texp = [5.0, -1.0, 7.0]
 
-    assert ra._build_plane4_texp_table([[2.0, 0.0], [1.0]], plane4) == [
+    assert ra._build_plane4_texp_table([[2.0, 0.0], [1.0]], plane4_texp) == [
         [7.0, 5.0],
         [-1.0],
     ]
 
 
 def test_texp_table_marks_out_of_range_candidates():
-    plane4 = [SimpleNamespace(cluster_time=5.0)]
-
-    assert ra._build_plane4_texp_table([[0.0, 3.0]], plane4) == [[5.0, -1.0]]
+    assert ra._build_plane4_texp_table([[0.0, 3.0]], [5.0]) == [[5.0, -1.0]]
 
 
 def test_candidate_is_the_first_with_a_positive_texp():
@@ -190,24 +188,34 @@ def test_plane_indices_instead_of_positions_would_be_caught():
     assert result.theta_4p != pytest.approx(expected_angles()[0], abs=0.5)
 
 
-def test_without_a_valid_plane_4_time_the_nearest_candidate_is_kept():
-    result = reconstruct(straight_event(texp_plane4=-1.0))
+@pytest.mark.parametrize("time", [0.0, -1.0])
+def test_the_geant4_time_is_not_a_time_expansion(time):
+    """B3: a cluster time of 0 or less changes nothing, on any plane."""
+    reference = reconstruct(straight_event())
 
-    assert result.track_4p_index_xz == 0
-    assert result.best_track_4p_is_texp_null_xz == ra.TEXP_NULL_TRUE
-    assert result.best_track_4p_is_texp_null_xy == ra.TEXP_NULL_TRUE
-    assert result.best_track_4p_chi_square_xz >= 0.0
+    clusters = (
+        line(0.02, SLOPE_XZ, Z_ADD, (8, 9, 10, 11), (time,) * 4)
+        + line(-0.03, SLOPE_XY, Y_ADD, (0, 1, 2, 3), (time,) * 4)
+    )
+    result = reconstruct(build_tracking_events(clusters)[0])
+
+    assert result.best_track_xz_index == reference.best_track_xz_index >= 0
+    assert result.best_track_3p_chi_square_xz == reference.best_track_3p_chi_square_xz
+    assert result.track_4p_index_xz == reference.track_4p_index_xz
+    assert result.best_track_4p_is_texp_null_xz == ra.TEXP_NULL_FALSE
+    assert result.best_track_4p_is_texp_null_xy == ra.TEXP_NULL_FALSE
+    assert result.theta_4p == reference.theta_4p
 
 
-def test_nearest_candidate_with_a_valid_time_wins():
+def test_the_nearest_plane_4_candidate_wins_whatever_its_time():
     event = straight_event()
     on_line = event.z4[0]
-    decoy = ClusterRecord(**{
+    nearest = ClusterRecord(**{
         **vars(on_line),
         "cluster_position": on_line.cluster_position + 0.001,
         "cluster_time": -1.0,
     })
-    event.z4 = [decoy, ClusterRecord(**{
+    event.z4 = [nearest, ClusterRecord(**{
         **vars(on_line),
         "cluster_position": on_line.cluster_position + 0.01,
     })]
@@ -217,9 +225,9 @@ def test_nearest_candidate_with_a_valid_time_wins():
     parent = result.track_3p_of_4p_index_xz
     inner = result.track_4p_index_xz
 
-    assert inner == 1
+    assert inner == 0
     assert result.best_track_4p_is_texp_null_xz == ra.TEXP_NULL_FALSE
-    assert result.tracks_xz.cluster_indices_4[parent][inner] == 1.0
+    assert result.tracks_xz.cluster_indices_4[parent][inner] == 0.0
 
 
 def test_missing_plane_4_in_one_view_blocks_promotion_in_both():

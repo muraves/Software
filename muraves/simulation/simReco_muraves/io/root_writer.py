@@ -8,6 +8,15 @@ import uproot
 
 
 class RootWriter:
+    """Writes ClusteredData in chunks of about chunk_size clusters.
+
+    A chunk ends only between events, never inside one, so each event's
+    clusters are in exactly one file (review point B1 of PR #26): a chunk
+    holds at least chunk_size clusters, except the last, and at most one
+    event's clusters more. The records of an event must arrive one after
+    the other; an event that comes back after its chunk was written is an
+    error.
+    """
 
     def __init__(
         self,
@@ -28,6 +37,9 @@ class RootWriter:
 
         self.file_index = 0
         self.n_written = 0
+
+        self._current_event = None
+        self._written_events = set()
 
         self._reset_buffers()
 
@@ -51,6 +63,22 @@ class RootWriter:
         self.strip_energies = []
 
     def add_record(self, record):
+
+        key = (record.process_id, record.event)
+
+        if key != self._current_event:
+            # A new event starts, so the previous one is complete: this
+            # is the only place where a chunk may end.
+            if len(self.event) >= self.chunk_size:
+                self.flush()
+
+            if key in self._written_events:
+                raise ValueError(
+                    f"clusters of event {key} arrive after its chunk was "
+                    "written; the records of an event must be contiguous"
+                )
+
+            self._current_event = key
 
         self.process_id.append(record.process_id)
         self.event.append(record.event)
@@ -88,9 +116,6 @@ class RootWriter:
         self.strip_energies.append(
             record.strip_energies
         )
-
-        if len(self.event) >= self.chunk_size:
-            self.flush()
 
     def extend(self, records):
 
@@ -190,6 +215,8 @@ class RootWriter:
 
         self.n_written += n_clusters
         self.file_index += 1
+
+        self._written_events.update(zip(self.process_id, self.event))
 
         self._reset_buffers()
 

@@ -9,6 +9,8 @@ from ..nested_access import MISSING_VALUE, nested_value_or_missing
 from muraves_lib.reco.angular_coordinates import TrackAngularCoordinates
 from muraves_lib.reco.tracking import MakeTracks
 
+from simReco_muraves.time_expansion import time_expansions
+
 
 # Plane-4 candidate selection quality, mirroring
 # best_track_4p_is_texp_null_* in the experimental MURAVES_reco.py.
@@ -35,10 +37,11 @@ def run_tracking_xz(
         [c.cluster_energy for c in event.z2],
         [c.cluster_energy for c in event.z3],
         [c.cluster_energy for c in event.z4],
-        [c.cluster_time for c in event.z1],
-        [c.cluster_time for c in event.z2],
-        [c.cluster_time for c in event.z3],
-        [c.cluster_time for c in event.z4],
+        # time expansions, not the Geant4 cluster times (B3)
+        time_expansions(event.z1),
+        time_expansions(event.z2),
+        time_expansions(event.z3),
+        time_expansions(event.z4),
         proximity_cut_xz,
         x_pos,
         z_add,
@@ -66,10 +69,11 @@ def run_tracking_xy(
         [c.cluster_energy for c in event.y2],
         [c.cluster_energy for c in event.y3],
         [c.cluster_energy for c in event.y4],
-        [c.cluster_time for c in event.y1],
-        [c.cluster_time for c in event.y2],
-        [c.cluster_time for c in event.y3],
-        [c.cluster_time for c in event.y4],
+        # time expansions, not the Geant4 cluster times (B3)
+        time_expansions(event.y1),
+        time_expansions(event.y2),
+        time_expansions(event.y3),
+        time_expansions(event.y4),
         proximity_cut_xy,
         x_pos,
         y_add,
@@ -79,13 +83,17 @@ def run_tracking_xy(
     )
 
 
+# The three functions below copy the best-track selection of the data
+# chain (MURAVES_reco.py). They are temporary: #31 moves that selection
+# into muraves_lib.reco, where both chains will call the same code, and
+# then removes this copy. Until then, keep them as they are.
+
+
 def _select_best_3p_index(tracks, ntracks_3p: int) -> int:
     """Best three-plane candidate used to seed four-plane promotion.
 
-    Ported verbatim from MURAVES_reco.py. Both branches currently
-    evaluate to BestChi_index; the branch is kept so that this code
-    stays a faithful copy of the experimental selection and so that any
-    future upstream change to the energy-based branch is easy to mirror.
+    Copy of the selection in MURAVES_reco.py, to be replaced by the
+    shared one (#31). Both branches currently evaluate to BestChi_index.
     """
     if ntracks_3p <= 0:
         return -1
@@ -98,9 +106,14 @@ def _select_best_3p_index(tracks, ntracks_3p: int) -> int:
 
 def _build_plane4_texp_table(
     cluster_indices_4,
-    plane4_clusters,
+    plane4_texp: list[float],
 ) -> list[list[float]]:
-    """Texp of each plane-4 candidate, laid out like cluster_indices_4."""
+    """Time expansion of each plane-4 candidate, laid out like
+    cluster_indices_4; plane4_texp holds one value per plane-4 cluster.
+
+    Copy of the selection in MURAVES_reco.py, to be replaced by the
+    shared one (#31).
+    """
     table: list[list[float]] = []
 
     for row in cluster_indices_4:
@@ -109,9 +122,9 @@ def _build_plane4_texp_table(
         for idx_val in row:
             idx_int = int(idx_val)
 
-            if 0 <= idx_int < len(plane4_clusters):
+            if 0 <= idx_int < len(plane4_texp):
                 texp_row.append(
-                    plane4_clusters[idx_int].cluster_time
+                    plane4_texp[idx_int]
                 )
             else:
                 texp_row.append(-1.0)
@@ -130,6 +143,9 @@ def _select_plane4_candidate(
     Returns (selected inner index, texp-null flag). The fallback to
     index 0 when no candidate has a positive Texp is the experimental
     behaviour; the flag records that it happened.
+
+    Copy of the selection in MURAVES_reco.py, to be replaced by the
+    shared one (#31).
     """
     selected = 0
     is_texp_null = TEXP_NULL_TRUE
@@ -237,12 +253,12 @@ def reconstruct_event(
 
     cluster_c4_texp_xz = _build_plane4_texp_table(
         tracks_xz.cluster_indices_4,
-        event.z4,
+        time_expansions(event.z4),
     )
 
     cluster_c4_texp_xy = _build_plane4_texp_table(
         tracks_xy.cluster_indices_4,
-        event.y4,
+        time_expansions(event.y4),
     )
 
     # ----------------------------------------------

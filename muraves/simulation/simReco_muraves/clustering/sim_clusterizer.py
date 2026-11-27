@@ -14,6 +14,7 @@ from muraves_lib.reco.cluster_lists import (
 from muraves_lib.reco.reco_config import get_reco_config
 
 from simReco_muraves.models.cluster_record import ClusterRecord
+from simReco_muraves.time_expansion import SIM_TIME_EXPANSION
 from simReco_muraves.clustering.seeding import (
     digitizer_generator,
     smearing_seed,
@@ -130,8 +131,8 @@ class SimClusterizer:
             AdStripsThEnergy_singleStripCl=
                 self.adjacent_threshold,
 
-            Texp1=1.0,
-            Texp2=1.0,
+            Texp1=SIM_TIME_EXPANSION,
+            Texp2=SIM_TIME_EXPANSION,
 
             TriggerMask1=list(range(32)),
             TriggerMask2=list(range(32)),
