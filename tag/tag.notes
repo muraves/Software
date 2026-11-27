@@ -8,8 +8,34 @@
 !
 !                                   k changes for small bug fixes or documentation updates.   
 !                                        *e.g.* SMALL CHANGES THAT DO NOT AFFECT THE OUTPUTS: python pakage, update of snakemake version, necessity to update container or environment.
-! Date        : yyyy-mm-dd           
+! Date        : yyyy-mm-dd
+! muraves_lib : not versioned separately. Both chains use muraves_lib from the same checkout as the
+!               workflow (PYTHONPATH / editable install), so the workflow tag identifies it. The
+!               version in pyproject.toml is not maintained; muraves_lib-v0.1.0 (= v1.1.0) was the
+!               only package tag. A separate version will be introduced if muraves_lib is ever used
+!               independently of this repository (e.g. installed in the image or in another project).
 !-----------------------------------------------------------------------------
+
+!================ Workflow tag v2.0.0 2026-11-27 ==================================
+|Description:
+| v1 data MUST be reprocessed (tag/requirements.yaml: v2): every track quantity changes.
+|  - Depth correction of 2-bar clusters (method B): a cluster of two adjacent strips is fitted at
+|    the depth Xc where the muon crosses the face shared by the two bars (x_pos + Xc), instead of
+|    the plane centre. Clusters of size 1 or >= 3 are unchanged. Reduces the shoulders of the
+|    Z/Y residuals of steep tracks (P2 residual sigma68 at |slope| 1.2-1.5: Z 5.79 -> 4.95 mm,
+|    Y 5.82 -> 4.77 mm on 99 NERO good runs).
+|    https://github.com/muraves/Software/pull/30
+|  - New branches ClusterDepth_{Z,Y}{1..4} [m]. Residue branches are taken at the cluster depth:
+|    to recompute a residual offline use x = x_pos + ClusterDepth.
+|  - Configuration: depth_correction (enabled, h_over_p = 1/0.97 nominal) in
+|    shared/reco_parameters.json; depth_face_orientation per chain (data: Z +1, Y -1 for NERO,
+|    BLU, ROSSO). See muraves_lib/configuration/README.md.
+|  - Unit tests of muraves_lib.reco run in CI; pytest is in the Docker image.
+|
+| Known limitation: the simulation reconstruction does not apply the depth correction yet
+| (https://github.com/muraves/Software/issues/32). Do not compare MC with v2 data until then.
+|
+| More details: https://github.com/muraves/Software/compare/v1.1.1...v2.0.0
 
 !================ Workflow tag v1.1.0 2026-11-09 ==================================
 |Description:

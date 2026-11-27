@@ -1,7 +1,7 @@
 [project]
 
 name = "muraves-lib"   # nome del package (a tua scelta)
-version = "0.1.0"  # muraves_lib-vX.Y.Z git tag
+version = "0.1.0"  # not maintained: muraves_lib is used from the same checkout as the workflow, so the workflow tag vX.Y.Z identifies it (tag/tag.notes)
 description = "Project for analysis and monitoring of MuRaVes data"
 readme = "README.md"
 requires-python = ">=3.8"
