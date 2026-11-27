@@ -34,11 +34,6 @@ COMMANDS = (
         "clusters | tracks -> golden tracks",
         "Phase III",
     ),
-    (
-        "muraves-simCompare",
-        "check both golden routes agree",
-        "validation",
-    ),
 )
 
 CHAIN = (

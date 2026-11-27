@@ -41,8 +41,7 @@ simReco_muraves/
 └── tracking/
 
 scripts/
-├── validation/
-└── manual_checks/
+└── run_chain.sh
 
 docs/
 extras/
@@ -183,9 +182,9 @@ the tag `standalone-final` of the standalone simReco-muraves repository.
 ### Running the chain end to end
 
 ```bash
-muraves-simCluster  validation_data/raw_100.root --detector NERO
-muraves-simTrk      validation_data/raw_100_NERO_clustered_part000.root
-muraves-simGTrk     validation_data/raw_100_NERO_tracked_part000.root
+muraves-simCluster  hits.root --detector NERO
+muraves-simTrk      hits_NERO_clustered_part000.root
+muraves-simGTrk     hits_NERO_tracked_part000.root
 ```
 
 The golden stage accepts either input type and detects which it has
@@ -204,14 +203,9 @@ them, needs `-o` or separate directories. An existing output is never
 overwritten without `--force`.
 
 ```bash
-muraves-simGTrk validation_data/raw_100_NERO_clustered_part000.root \
-    -o validation_data/g_clustered.root
-muraves-simGTrk validation_data/raw_100_NERO_tracked_part000.root \
-    -o validation_data/g_tracked.root
+muraves-simGTrk hits_NERO_clustered_part000.root -o g_clustered.root
+muraves-simGTrk hits_NERO_tracked_part000.root -o g_tracked.root
 ```
-
-`muraves-simCompare` does this for you, writing its intermediates to a
-temporary directory.
 
 ### Digitization parameters
 
@@ -314,31 +308,9 @@ current behaviour, including the quirks listed under *Observations on
 the reused code*, so that changing any of it is a deliberate act. A
 test pinning a quirk does not mean the quirk is correct.
 
-### Comparing the two golden routes
-
-Golden output can be produced either straight from ClusteredData or via
-persisted TrackedData. The two routes share a record builder but reach
-it through different code, so they are checked against each other
-directly:
-
-```bash
-muraves-simCompare <clustered_root_file>
-```
-
-This runs both routes from one input and compares every common branch,
-entry by entry, exiting non-zero on any difference. Intermediate files
-go to a temporary directory unless `--work-dir` is given.
-
-Two golden files that already exist can be compared without re-running
-anything:
-
-```bash
-muraves-simCompare --golden left.root right.root
-```
-
-Comparison is exact by default; `--rtol` and `--atol` relax it if
-needed. NaN compares equal to NaN, since a branch that is NaN in both
-routes agrees.
+Comparison and validation tools (route comparison, data/simulation
+comparisons, reference samples) are not part of this package; they
+belong to the validation pipeline.
 
 ## Provenance
 
@@ -349,7 +321,7 @@ its tracking parameters but the digitization constant that made the
 clusters it descends from.
 
 ```bash
-muraves-sim --provenance validation_data/raw_100_golden_part000.root
+muraves-sim --provenance hits_NERO_golden_part000.root
 ```
 
 The record holds the stage name, a UTC timestamp, the git commit and

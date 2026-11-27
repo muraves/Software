@@ -29,8 +29,6 @@ Usage: run_chain.sh -o OUTDIR [-i INPUT] [options] [-- CLUSTER_OPTIONS]
   -s STAGE   all | cluster | track | golden          (default: all)
   -j N       Parallel jobs for the track and golden stages (default: 1).
              Clusterization of a single input file is always serial.
-  -c         After the golden stage, run muraves-simCompare on the
-             first clustered chunk as an end-to-end spot check.
   -f         Replace. Each stage that runs first deletes its existing
              output chunks, so nothing stale from a previous, longer
              run can survive into the next stage.
@@ -50,7 +48,7 @@ same command. If a run was killed while a file was being written,
 delete that one output before resuming.
 
 Examples:
-  run_chain.sh -i /data/sim/hits_full.root -o /data/sim/chain_v2 -j 4 -c -- --detector NERO
+  run_chain.sh -i /data/sim/hits_full.root -o /data/sim/chain_v2 -j 4 -- --detector NERO
   run_chain.sh -o /data/sim/chain_v2 -s golden -j 4
   run_chain.sh -i /data/sim/hits_full.root -o /data/sim/chain_npecm -j 4 \
       -- --pe-per-cm-file --detector NERO --run-range 5710-5759
@@ -65,16 +63,14 @@ INPUT=""
 OUTDIR=""
 STAGE="all"
 JOBS=1
-COMPARE=0
 FORCE=0
 
-while getopts "i:o:s:j:cfh" option; do
+while getopts "i:o:s:j:fh" option; do
     case "$option" in
         i) INPUT="$OPTARG" ;;
         o) OUTDIR="$OPTARG" ;;
         s) STAGE="$OPTARG" ;;
         j) JOBS="$OPTARG" ;;
-        c) COMPARE=1 ;;
         f) FORCE=1 ;;
         h) usage; exit 0 ;;
         *) usage; exit 2 ;;
@@ -140,11 +136,6 @@ for command_name in muraves-simCluster muraves-simTrk muraves-simGTrk; do
     command -v "$command_name" >/dev/null \
         || die "$command_name not on PATH; activate the environment first"
 done
-
-if [[ "$COMPARE" == 1 ]]; then
-    command -v muraves-simCompare >/dev/null \
-        || die "muraves-simCompare not on PATH"
-fi
 
 # ----------------------------------------------------------------------
 # Layout and logging
@@ -401,26 +392,6 @@ if [[ "$RUN_GOLDEN" == 1 ]]; then
     echo
 fi
 
-COMPARE_STATUS="not run"
-
-if [[ "$COMPARE" == 1 ]]; then
-    first_chunk="$(collect "$CLUSTER_DIR" '*_clustered_part*.root' | head -1)"
-
-    if [[ -n "$first_chunk" ]]; then
-        say "spot check: muraves-simCompare on $(basename "$first_chunk")"
-
-        if muraves-simCompare "$first_chunk" \
-                > "$LOGDIR/compare.log" 2>&1; then
-            COMPARE_STATUS="routes agree"
-        else
-            COMPARE_STATUS="ROUTES DIFFER (see logs/$TIMESTAMP/compare.log)"
-        fi
-
-        say "$COMPARE_STATUS"
-        echo
-    fi
-fi
-
 # ----------------------------------------------------------------------
 # Summary
 # ----------------------------------------------------------------------
@@ -441,7 +412,6 @@ echo "tracking         : $(hms $TRACK_TIME)"
 echo "golden           : $(hms $GOLDEN_TIME)"
 echo "total            : $(hms $((SECONDS - TOTAL_START)))"
 echo
-echo "route spot check : $COMPARE_STATUS"
 echo "failed files     : $failures"
 
 if [[ "$failures" -gt 0 ]]; then

@@ -15,7 +15,6 @@ sim = [
     "numpy",
     "scipy>=1.16",   # Landau draw of the path-length digitizer
 ]
-sim-analysis = ["matplotlib"]   # muraves/simulation/analysis/
 dev = ["pytest"]
 
 [project.scripts]
@@ -24,7 +23,6 @@ dev = ["pytest"]
 "muraves-simTrk" = "simReco_muraves.cli.run_tracking:main"
 "muraves-simGTrk" = "simReco_muraves.cli.run_gTrks:main"
 "muraves-sim" = "simReco_muraves.cli.overview:main"
-"muraves-simCompare" = "simReco_muraves.cli.compare_golden_routes:main"
 
 [build-system]
 requires = ["setuptools"]

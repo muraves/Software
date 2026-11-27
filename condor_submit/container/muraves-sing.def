@@ -28,7 +28,7 @@ From: condaforge/miniforge3:latest
         pandas \
         polars \
         numpy \
-        scipy \
+        "scipy>=1.16" \
         matplotlib \
         jupyter \
         zfit \
