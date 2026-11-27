@@ -219,12 +219,15 @@ def attach_provenance(
     input_path: str | Path | None = None,
     parameters: Mapping[str, Any] | None = None,
     quiet: bool = False,
+    recorded_as: str | Path | None = None,
 ) -> bool:
     """Append this stage to the lineage carried by its input.
 
     Reads whatever provenance the input file holds, appends a record
     for this stage, and writes the result into the output file.
-    Returns True on success; never raises.
+    recorded_as is the output path the record names, when the file is
+    written in scratch and copied to its destination afterwards
+    (default: output_path). Returns True on success; never raises.
     """
     try:
         upstream = read_chain(input_path) if input_path else []
@@ -232,7 +235,7 @@ def attach_provenance(
         record = build_stage_record(
             stage=stage,
             input_file=input_path,
-            output_file=output_path,
+            output_file=recorded_as if recorded_as is not None else output_path,
             parameters=parameters,
         )
 
@@ -264,21 +267,30 @@ def attach_provenance_to_many(
     stage: str,
     input_path: str | Path | None = None,
     parameters: Mapping[str, Any] | None = None,
+    recorded_as: Sequence[str | Path] | None = None,
 ) -> int:
     """Attach the same stage record to several output files.
 
-    Used by clusterization, whose output is split into chunks. Returns
-    the number of files successfully annotated.
+    Used by clusterization, whose output is split into chunks.
+    recorded_as, if given, holds the path each record names, one per
+    output file (see attach_provenance). Returns the number of files
+    successfully annotated.
     """
+    if recorded_as is None:
+        recorded_as = list(output_paths)
+    elif len(recorded_as) != len(output_paths):
+        raise ValueError("recorded_as needs one path per output file")
+
     written = 0
 
-    for output_path in output_paths:
+    for output_path, recorded_path in zip(output_paths, recorded_as):
         if attach_provenance(
             output_path,
             stage=stage,
             input_path=input_path,
             parameters=parameters,
             quiet=True,
+            recorded_as=recorded_path,
         ):
             written += 1
 

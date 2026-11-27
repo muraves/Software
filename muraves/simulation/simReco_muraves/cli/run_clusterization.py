@@ -2,8 +2,16 @@
 
 """Phase I: simulated hits to ClusteredData ROOT output.
 
-    muraves-simCluster <hit_root_file> [-o OUTPUT_DIR]
-    python -m simReco_muraves.cli.run_clusterization <hit_root_file>
+    muraves-simCluster <hit_root_file> --detector NERO -o OUTPUT_DIR
+    python -m simReco_muraves.cli.run_clusterization <hit_root_file> --detector NERO -o OUTPUT_DIR
+
+The chunks are written to a scratch folder. At the end of the run, the
+provenance (with the run's totals) is added to each, and they are
+copied to OUTPUT_DIR (review point A1 of PR #26). The run refuses to
+start if OUTPUT_DIR already holds chunks of the same prefix, unless
+--force, which replaces them: those this run does not rewrite are
+removed (review point B2). If the run fails, no chunk of the prefix is
+left in OUTPUT_DIR.
 """
 
 from __future__ import annotations
@@ -11,6 +19,15 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from muraves_lib.file_handler import (
+    copy_into_place,
+    make_output_dir,
+    scratch_folder,
+)
+from simReco_muraves.cli.common import (
+    add_scratch_argument,
+    checked_scratch_dir,
+)
 from simReco_muraves.clustering.sim_clusterizer import (
     LandauPathDigitizer,
     PoissonDigitizer,
@@ -69,12 +86,24 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         "-o",
         "--output-dir",
         type=Path,
-        default=None,
+        required=True,
         help=(
-            "Directory for the ClusteredData chunks "
-            "(default: alongside the input file)."
+            "Directory for the ClusteredData chunks (required). "
+            "Created if missing, group-writable."
         ),
     )
+
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "Replace the chunks of the same prefix already in the output "
+            "directory. Without it, the run refuses to start if there "
+            "are any."
+        ),
+    )
+
+    add_scratch_argument(parser)
 
     parser.add_argument(
         "--output-prefix",
@@ -178,6 +207,7 @@ def print_configuration(arguments: argparse.Namespace) -> None:
     print(f"Input          = {arguments.input_file}")
     print(f"Output dir     = {arguments.output_dir}")
     print(f"Output prefix  = {arguments.output_prefix}")
+    print(f"Scratch dir    = {arguments.scratch_dir or '(system temporary folder)'}")
     setup = arguments.digitization
     provenance = setup.provenance
 
@@ -207,12 +237,76 @@ def make_digitizer(setup, rng_seed):
         return PoissonDigitizer(pe_per_mev=setup.factors, rng_seed=rng_seed)
 
 
+def existing_chunks(folder: Path, prefix: str) -> list[Path]:
+    """The {prefix}_part*.root files in folder, sorted."""
+    if not folder.is_dir():
+        return []
+
+    start = f"{prefix}_part"
+
+    return sorted(
+        path
+        for path in folder.iterdir()
+        if path.name.startswith(start)
+        and path.name.endswith(".root")
+        and path.is_file()
+    )
+
+
+def publish_chunks(chunks: list[Path], destination: Path, prefix: str) -> list[Path]:
+    """Copy this run's chunks to destination, then remove the other
+    chunks of the prefix there, left from an earlier run (review point
+    B2; there can be some only with --force). Returns those removed."""
+    names = {chunk.name for chunk in chunks}
+
+    for chunk in chunks:
+        copy_into_place(chunk, destination / chunk.name)
+
+    stale = [
+        path
+        for path in existing_chunks(destination, prefix)
+        if path.name not in names
+    ]
+
+    for path in stale:
+        path.unlink()
+
+    return stale
+
+
 def run_clusterization(arguments: argparse.Namespace) -> None:
+    destination = arguments.output_dir
+    prefix = arguments.output_prefix
+
+    try:
+        with scratch_folder(arguments.scratch_dir) as scratch:
+            _run_in_scratch(arguments, scratch)
+    except BaseException:
+        # Nothing of the prefix is left, so a failed run cannot pass
+        # for a complete one, nor mix with an earlier run's chunks.
+        removed = existing_chunks(destination, prefix)
+
+        for path in removed:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError as error:
+                print(f"WARNING: could not remove {path}: {error}")
+
+        if removed:
+            print(
+                f"The run failed: removed {len(removed)} chunk(s) "
+                f"{prefix}_part*.root from {destination}"
+            )
+
+        raise
+
+
+def _run_in_scratch(arguments: argparse.Namespace, scratch: Path) -> None:
     reader = RootReader(str(arguments.input_file))
 
     writer = RootWriter(
         output_prefix=arguments.output_prefix,
-        output_dir=str(arguments.output_dir),
+        output_dir=scratch,
         chunk_size=arguments.chunk_size,
     )
 
@@ -286,11 +380,9 @@ def run_clusterization(arguments: argparse.Namespace) -> None:
         print(f"Cluster efficiency          : {efficiency:.2f}%")
         print(f"Clusters/event              : {clusters_per_event:.2f}")
 
-    chunk_files = sorted(
-        arguments.output_dir.glob(
-            f"{arguments.output_prefix}_part*.root"
-        )
-    )
+    # Only this run's chunks, still in scratch: the run totals are known
+    # only now, at the end.
+    chunk_files = list(writer.written_files)
 
     if chunk_files:
         attach_provenance_to_many(
@@ -306,6 +398,23 @@ def run_clusterization(arguments: argparse.Namespace) -> None:
                 "events_processed": len(event_keys),
                 "total_clusters": total_clusters,
             },
+            recorded_as=[
+                arguments.output_dir / chunk.name for chunk in chunk_files
+            ],
+        )
+
+    removed = publish_chunks(
+        chunk_files,
+        arguments.output_dir,
+        arguments.output_prefix,
+    )
+
+    print(f"Copied {len(chunk_files)} chunk(s) to {arguments.output_dir}")
+
+    if removed:
+        print(
+            f"Removed {len(removed)} chunk(s) left from an earlier run "
+            f"(--force), e.g. {removed[0].name}"
         )
 
     print()
@@ -341,18 +450,37 @@ def main(argv: list[str] | None = None) -> None:
         raise FileNotFoundError(input_file)
 
     arguments.input_file = input_file
+    arguments.output_dir = arguments.output_dir.expanduser().resolve()
 
-    if arguments.output_dir is None:
-        arguments.output_dir = input_file.parent
-    else:
-        arguments.output_dir = (
-            arguments.output_dir.expanduser().resolve()
-        )
+    try:
+        arguments.scratch_dir = checked_scratch_dir(arguments.scratch_dir)
+    except ValueError as error:
+        raise SystemExit(f"error: {error}") from None
 
     if arguments.output_prefix is None:
         arguments.output_prefix = (
             f"{input_file.stem}{arguments.digitization.tag}_clustered"
         )
+
+    # Checked before any work: chunks of the same prefix from an earlier
+    # run would otherwise be mixed with this run's (review point B2).
+    existing = existing_chunks(arguments.output_dir, arguments.output_prefix)
+
+    if existing and not arguments.force:
+        raise SystemExit(
+            f"error: {arguments.output_dir} already holds {len(existing)} "
+            f"chunk(s) {arguments.output_prefix}_part*.root, e.g. "
+            f"{existing[0].name}. Remove them, choose another -o or "
+            "--output-prefix, or pass --force to replace them."
+        )
+
+    if existing:
+        print(
+            f"--force: the {len(existing)} chunk(s) {arguments.output_prefix}"
+            "_part*.root already there will be replaced at the end of the run."
+        )
+
+    make_output_dir(arguments.output_dir)
 
     print_configuration(arguments)
     run_clusterization(arguments)

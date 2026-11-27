@@ -4,6 +4,10 @@
 
     muraves-simTrk <clustered_root_file_or_directory> [-o OUTPUT]
     python -m simReco_muraves.cli.run_tracking <clustered_root_file>
+
+The output is written in scratch and copied to its destination
+(simReco_muraves.cli.common). In a directory, the inputs are the files
+holding ClusteredData, whatever their names.
 """
 
 from __future__ import annotations
@@ -11,7 +15,15 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from muraves_lib.file_handler import scratch_to_output
 from muraves_lib.reco.reco_config import get_reco_config
+from simReco_muraves.cli.common import (
+    add_scratch_argument,
+    checked_scratch_dir,
+    prepare_output,
+    print_skipped,
+    select_by_type,
+)
 from simReco_muraves.detector import detector_for, tracking_geometry
 from simReco_muraves.io.clustered_root_reader import load_clusters
 from simReco_muraves.io.provenance_tree import attach_provenance
@@ -46,12 +58,6 @@ PROXIMITY_CUT_XZ = float(_RECONSTRUCTION["proximity_sigma_multiplier"]) * SIGMA_
 PROXIMITY_CUT_XY = float(_RECONSTRUCTION["proximity_sigma_multiplier"]) * SIGMA_Y
 
 
-CLUSTERED_PATTERNS = (
-    "*_clustered*.root",
-    "*clustered*.root",
-)
-
-
 def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="muraves-simTrk",
@@ -65,7 +71,9 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         "input_path",
         type=Path,
         help=(
-            "ClusteredData ROOT file, or a directory of them."
+            "ClusteredData ROOT file, or a directory: then every file "
+            "in it holding ClusteredData is tracked, the output next to "
+            "its input."
         ),
     )
 
@@ -86,6 +94,8 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Overwrite the output file if it already exists.",
     )
+
+    add_scratch_argument(parser)
 
     parser.add_argument(
         "--detector",
@@ -131,22 +141,17 @@ def process_file(
     output_file: Path | None = None,
     force: bool = False,
     detector: str | None = None,
+    scratch_dir: Path | None = None,
 ) -> None:
 
     geometry = tracking_geometry(detector_for([input_file], detector))
 
-    if output_file is None:
-        output_file = build_output_name(input_file)
-    else:
-        # Resolve so that the overwrite check, the printed path and
-        # the recorded provenance all refer to the same location.
-        output_file = output_file.expanduser().resolve()
-
-    if output_file.exists() and not force:
-        raise FileExistsError(
-            f"Output already exists: {output_file} "
-            "(pass --force to overwrite)"
-        )
+    output_file = prepare_output(
+        input_file,
+        output_file,
+        force=force,
+        default_name=build_output_name,
+    )
 
     print()
     print("--------------------------------------------------")
@@ -196,21 +201,23 @@ def process_file(
 
     print(f"Tracked records : {len(records):,}")
 
-    write_tracked_root(str(output_file), records)
+    with scratch_to_output(output_file, scratch_dir) as scratch_file:
+        write_tracked_root(str(scratch_file), records)
 
-    attach_provenance(
-        output_file,
-        stage="tracking",
-        input_path=input_file,
-        parameters={
-            **geometry.as_parameters(),
-            "sigma_z": SIGMA_Z,
-            "sigma_y": SIGMA_Y,
-            "proximity_cut_xz": PROXIMITY_CUT_XZ,
-            "proximity_cut_xy": PROXIMITY_CUT_XY,
-            "events": len(tracking_events),
-        },
-    )
+        attach_provenance(
+            scratch_file,
+            stage="tracking",
+            input_path=input_file,
+            parameters={
+                **geometry.as_parameters(),
+                "sigma_z": SIGMA_Z,
+                "sigma_y": SIGMA_Y,
+                "proximity_cut_xz": PROXIMITY_CUT_XZ,
+                "proximity_cut_xy": PROXIMITY_CUT_XY,
+                "events": len(tracking_events),
+            },
+            recorded_as=output_file,
+        )
 
     print()
     print(f"Wrote: {output_file}")
@@ -218,12 +225,11 @@ def process_file(
 
 
 def get_cluster_files(path: Path) -> list[Path]:
-    files: list[Path] = []
-
-    for pattern in CLUSTERED_PATTERNS:
-        files.extend(path.glob(pattern))
-
-    return sorted(set(files))
+    """The files in a folder that hold ClusteredData (review point B6:
+    by tree, not by name, so earlier outputs are never taken as input)."""
+    selected, skipped = select_by_type(path, {"clustered"})
+    print_skipped(skipped)
+    return [file_path for file_path, _ in selected]
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -241,6 +247,8 @@ def _main(argv: list[str] | None = None) -> None:
     if not input_path.exists():
         raise FileNotFoundError(input_path)
 
+    scratch_dir = checked_scratch_dir(arguments.scratch_dir)
+
     print_configuration()
 
     if input_path.is_file():
@@ -249,6 +257,7 @@ def _main(argv: list[str] | None = None) -> None:
             output_file=arguments.output,
             force=arguments.force,
             detector=arguments.detector,
+            scratch_dir=scratch_dir,
         )
         return
 
@@ -266,7 +275,12 @@ def _main(argv: list[str] | None = None) -> None:
     for index, file_path in enumerate(cluster_files, start=1):
         print()
         print(f"[{index}/{len(cluster_files)}]")
-        process_file(file_path, force=arguments.force, detector=arguments.detector)
+        process_file(
+            file_path,
+            force=arguments.force,
+            detector=arguments.detector,
+            scratch_dir=scratch_dir,
+        )
 
     print()
     print("==================================================")

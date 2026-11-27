@@ -462,25 +462,30 @@ def cli():
 
 
 def test_cli_pe_per_mev_defaults_to_none():
-    assert cli().parse_arguments(["hits.root", "--detector", "NERO"]).pe_per_mev is None
+    assert cli().parse_arguments(["hits.root", "-o", "out", "--detector", "NERO"]).pe_per_mev is None
 
 
 def test_cli_requires_the_detector():
     with pytest.raises(SystemExit):
-        cli().parse_arguments(["hits.root"])
+        cli().parse_arguments(["hits.root", "-o", "out"])
+
+
+def test_cli_requires_the_output_directory():
+    with pytest.raises(SystemExit):
+        cli().parse_arguments(["hits.root", "--detector", "NERO"])
 
 
 def test_cli_file_option_without_a_path_is_the_packaged_calibration():
     from simReco_muraves.detector import packaged_calibration_file
 
-    arguments = cli().parse_arguments(["hits.root", "--pe-per-cm-file", "--detector", "NERO"])
+    arguments = cli().parse_arguments(["hits.root", "-o", "out", "--pe-per-cm-file", "--detector", "NERO"])
 
     assert arguments.pe_per_cm_file == packaged_calibration_file()
     assert arguments.pe_per_cm_file.is_file()
 
 
 def test_cli_file_option_with_a_path_keeps_it():
-    arguments = cli().parse_arguments(["hits.root", "--pe-per-cm-file", "mine.json", "--detector", "NERO"])
+    arguments = cli().parse_arguments(["hits.root", "-o", "out", "--pe-per-cm-file", "mine.json", "--detector", "NERO"])
 
     assert arguments.pe_per_cm_file == Path("mine.json")
 
@@ -489,6 +494,7 @@ def test_cli_detector_is_case_insensitive():
     arguments = cli().parse_arguments(
         [
             "hits.root",
+            "-o", "out",
             "--pe-per-cm-file", "factors.json",
             "--detector", "rosso",
             "--run-range", "10061-11918",
@@ -509,7 +515,7 @@ def test_cli_detector_is_case_insensitive():
 )
 def test_cli_rejects_bad_values(extra):
     with pytest.raises(SystemExit):
-        cli().parse_arguments(["hits.root", "--detector", "NERO", *extra])
+        cli().parse_arguments(["hits.root", "-o", "out", "--detector", "NERO", *extra])
 
 def test_file_option_gives_a_landau_digitizer(tmp_path):
     result = setup(

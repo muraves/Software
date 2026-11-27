@@ -34,18 +34,17 @@ Tracks4ptree-compatible ROOT output
 simReco_muraves/
 ├── cli/
 ├── clustering/
-├── config/
 ├── golden_tracking/
 ├── io/
 ├── models/
+├── tests/
 └── tracking/
 
 scripts/
 └── run_chain.sh
-
-docs/
-extras/
 ```
+
+Each subpackage keeps its tests in its own `tests/` folder.
 
 ## Main Components
 
@@ -82,13 +81,9 @@ Responsibilities:
 - TrackingResult generation
 - TrackedData ROOT output support
 
-Note:
-
-```text
-simReco_muraves/tracking/Tracking.py
-```
-
-contains adapted MURAVES reconstruction code and should be treated as the authoritative tracking implementation.
+The tracking itself is `MakeTracks` and `TrackAngularCoordinates` from
+`muraves_lib.reco`, the code the data chain runs;
+`simReco_muraves/tracking/` adapts the simulated events to it.
 
 ### Phase III: Golden Reconstruction
 
@@ -141,8 +136,8 @@ Each stage can be run either as a console script or as a module:
 Clusterization (simulated hits -> ClusteredData):
 
 ```bash
-muraves-simCluster <hit_root_file> --detector NERO [-o OUTPUT_DIR]
-python -m simReco_muraves.cli.run_clusterization <hit_root_file> --detector NERO
+muraves-simCluster <hit_root_file> --detector NERO -o OUTPUT_DIR
+python -m simReco_muraves.cli.run_clusterization <hit_root_file> --detector NERO -o OUTPUT_DIR
 ```
 
 Tracking (ClusteredData -> TrackedData):
@@ -159,9 +154,44 @@ muraves-simGTrk <root_file_or_directory>
 python -m simReco_muraves.cli.run_gTrks <root_file>
 ```
 
-`--help` on any of them lists the available options. Every stage
-accepts `-o/--output` for a single input file and refuses to overwrite
-an existing output unless `--force` is given.
+`--help` on any of them lists the available options.
+
+### Outputs: where and how they are written
+
+- **Clustering** writes into the directory given with `-o` (required).
+  It refuses to start if that directory already holds chunks of the
+  same prefix (`<prefix>_partNNN.root`), so chunks of two runs are never
+  mixed. `--force` replaces them: at the end of the run, the chunks it
+  does not rewrite are removed.
+- **Tracking and golden** write one output file per input file:
+  `-o FILE` (for a single input), or by default next to the input, with
+  `_clustered` or `_tracked` in the name replaced by `_tracked` or
+  `_golden`. An existing output is refused unless `--force` is given.
+
+No tool writes at the destination directly, so they work on `/pnfs`
+(dCache), where files can only be copied in. Each output is first
+written to a private scratch folder, together with its provenance, then
+copied next to its destination as `<name>.tmp`, given group read and
+write permissions (`0664`) and renamed into place
+(`muraves_lib.file_handler`: `scratch_to_output`, `copy_into_place`).
+Output folders the tools create are group-writable (`0775`).
+Clustering keeps all its chunks in scratch until the end of the run,
+since their provenance holds the run totals, so the scratch folder
+needs room for the whole clustered output of one input file.
+
+The scratch folder is made in the system's temporary folder, which
+follows `$TMPDIR`, or in `--scratch-dir DIR`. It is removed at the end,
+whether the run succeeded or not; only a job killed outright can leave
+a `muraves_scratch_*` folder behind (or a `<name>.tmp` next to the
+destination, if killed during the copy).
+
+A run that fails exits non-zero and leaves nothing under its output
+names: no empty or partial file that the next stage could take for a
+good one. With `--force`, the earlier output it was replacing is
+removed as well.
+
+A configured output location for productions (the simulation's
+equivalent of `data_path`) is left to the production workflow, #28.
 
 ### Detector and geometry
 
@@ -182,10 +212,12 @@ the tag `standalone-final` of the standalone simReco-muraves repository.
 ### Running the chain end to end
 
 ```bash
-muraves-simCluster  hits.root --detector NERO
-muraves-simTrk      hits_NERO_clustered_part000.root
-muraves-simGTrk     hits_NERO_tracked_part000.root
+muraves-simCluster  hits.root --detector NERO -o chain/
+muraves-simTrk      chain/hits_NERO_clustered_part000.root
+muraves-simGTrk     chain/hits_NERO_tracked_part000.root
 ```
+
+`scripts/run_chain.sh` runs the whole chain, with one folder per stage.
 
 The golden stage accepts either input type and detects which it has
 been given. `--input-type {clustered,tracked}` asserts the expected
@@ -206,6 +238,15 @@ overwritten without `--force`.
 muraves-simGTrk hits_NERO_clustered_part000.root -o g_clustered.root
 muraves-simGTrk hits_NERO_tracked_part000.root -o g_tracked.root
 ```
+
+Given a directory, `muraves-simTrk` and `muraves-simGTrk` take its
+files by the tree they hold, not by their names, so their own earlier
+outputs are never read as input: `muraves-simTrk` every file with
+`ClusteredData`, `muraves-simGTrk` every file with `ClusteredData` or
+`TrackedData`, or only those of `--input-type`. With the default
+`--input-type auto`, a directory holding both the clustered and the
+tracked version of a chunk is refused before anything runs, since both
+would give the same golden file.
 
 ### Digitization parameters
 
@@ -296,14 +337,15 @@ The suite covers every stage:
 | tracking | the straight-line fit, candidate building in `MakeTracks`, the angle convention, event building, four-plane candidate selection, and whole synthetic tracks end to end |
 | golden tracks | the projection shared by both routes |
 | provenance | records, chaining, and storage in ROOT files |
+| outputs | writing through scratch, permissions, clustering's chunk replacement, directory inputs |
 
 The end-to-end tracking tests double as a regression test for the
 Phase II geometry bug: a straight track with known slopes must come
 back with the angles those slopes imply, and running it on plane
 indices instead of plane positions is shown to be caught.
 
-Tests on the experiment's own code (`Tracking.py`,
-`Evaluate_Angular_Coordinates.py`) are characterisation tests. They pin
+Tests on the experiment's own code (`MakeTracks` and
+`TrackAngularCoordinates` in `muraves_lib.reco`) are characterisation tests. They pin
 current behaviour, including the quirks listed under *Observations on
 the reused code*, so that changing any of it is a deliberate act. A
 test pinning a quirk does not mean the quirk is correct.
@@ -367,16 +409,16 @@ lists the chain and every command in it.
 
 ## Reused reconstruction code
 
-Clustering and tracking are the experiment's own code, taken from
-`4_MainRecSof` and left untouched except where noted:
+Clustering and tracking are the experiment's own code, from
+`muraves_lib.reco`, which the data chain runs too:
 
 ```text
-simReco_muraves/clustering/ClusterLists.py
-simReco_muraves/tracking/Tracking.py
-simReco_muraves/tracking/Evaluate_Angular_Coordinates.py
+muraves_lib/reco/cluster_lists.py
+muraves_lib/reco/tracking.py
+muraves_lib/reco/angular_coordinates.py
 ```
 
-Keeping these equivalent to the originals is deliberate. Cluster and
+Sharing this code with the data chain is deliberate. Cluster and
 track definitions are then identical between simulation and experiment
 by construction rather than by agreement, which is what makes the
 comparisons in the Phase I-III validation meaningful.
@@ -410,8 +452,8 @@ if Texp_cl1[i] > 0 and Texp_cl2[j] and Texp_cl3[k]:
 
 Only the first term tests the sign. The other two are truthiness
 tests, so a negative Texp on plane 2 or 3 passes the gate while a Texp
-of exactly zero fails it. Simulation is unaffected, because simulated
-hit times are always positive. On the experimental side the gate is
+of exactly zero fails it. Simulation is unaffected, because it passes
+a time expansion of 1.0 (`simReco_muraves/time_expansion.py`). On the experimental side the gate is
 therefore more permissive than the first term suggests. This is
 expected to be revisited once the simulation timing study gives a
 clearer picture of how Texp should be used, so it is deliberately left
@@ -476,22 +518,6 @@ The proximity cuts are not independent constants: they are
 `0.004 -> 0.020` and `0.0035 -> 0.0175`. They are currently written
 out literally, so a change to sigma will not propagate to them
 automatically.
-
----
-
-## Development Material
-
-Historical studies, diagnostics, comparison plots, exploratory scripts, logs, and original reconstruction references have been intentionally separated from the production package and moved to:
-
-```text
-extras/
-```
-
-The production package itself is contained entirely inside:
-
-```text
-simReco_muraves/
-```
 
 ---
 

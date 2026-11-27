@@ -7,7 +7,11 @@
 
 The input type is detected from the tree present in the file. Passing
 --input-type asserts the expected type rather than overriding
-detection: a mismatch is an error, not a silent reinterpretation.
+detection: for a file, a mismatch is an error, not a silent
+reinterpretation; in a directory, it selects the files of that type.
+
+The output is written in scratch and copied to its destination
+(simReco_muraves.cli.common).
 """
 
 from __future__ import annotations
@@ -17,7 +21,16 @@ from pathlib import Path
 
 import uproot
 
+from muraves_lib.file_handler import scratch_to_output
 from muraves_lib.reco.reco_config import get_reco_config
+from simReco_muraves.cli.common import (
+    add_scratch_argument,
+    checked_scratch_dir,
+    prepare_output,
+    print_skipped,
+    root_file_type,
+    select_by_type,
+)
 from simReco_muraves.golden_tracking.production_pipeline import (
     run_golden_tracking_output,
 )
@@ -54,12 +67,7 @@ PROXIMITY_CUT_XY = float(_RECONSTRUCTION["proximity_sigma_multiplier"]) * SIGMA_
 
 TREE_NAME = "Tracks4ptree"
 
-INPUT_PATTERNS = (
-    "*_clustered*.root",
-    "*clustered*.root",
-    "*_tracked*.root",
-    "*tracked*.root",
-)
+INPUT_TYPES = ("clustered", "tracked")
 
 REQUIRED_BRANCHES = {
     "ProcessID",
@@ -103,7 +111,8 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         default="auto",
         help=(
             "Expected input type. The default detects it from the "
-            "file; naming a type asserts it and errors on mismatch."
+            "file; naming a type asserts it and errors on mismatch. "
+            "In a directory, only the files of that type are used."
         ),
     )
 
@@ -122,6 +131,8 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Overwrite the output file if it already exists.",
     )
+
+    add_scratch_argument(parser)
 
     parser.add_argument(
         "--detector",
@@ -152,28 +163,22 @@ def print_configuration() -> None:
 
 
 def classify_input_file(path: Path) -> str:
-    with uproot.open(path) as root_file:
-        if "TrackedData" in root_file:
-            return "tracked"
-
-        if "ClusteredData" in root_file:
-            return "clustered"
-
-        if TREE_NAME in root_file:
-            return "golden"
-
-    return "unknown"
+    return root_file_type(path)
 
 
 def resolve_input_type(path: Path, expected: str) -> str:
-    """Detected type, checked against an explicitly requested one."""
+    """Detected type, checked against an explicitly requested one.
+
+    A mismatch raises ValueError (review point B5: an exception the
+    directory loop handles like any other, not SystemExit).
+    """
     detected = classify_input_file(path)
 
     if expected == "auto":
         return detected
 
     if detected != expected:
-        raise SystemExit(
+        raise ValueError(
             f"--input-type {expected} was requested, but "
             f"{path.name} contains {detected} data."
         )
@@ -250,20 +255,27 @@ def _prepare_output(
     output_file: Path | None,
     force: bool,
 ) -> Path:
-    if output_file is None:
-        output_file = build_output_name(input_file)
-    else:
-        # Resolve so that the overwrite check, the printed path and
-        # the recorded provenance all refer to the same location.
-        output_file = output_file.expanduser().resolve()
+    return prepare_output(
+        input_file,
+        output_file,
+        force=force,
+        default_name=build_output_name,
+    )
 
-    if output_file.exists() and not force:
-        raise FileExistsError(
-            f"Output already exists: {output_file} "
-            "(pass --force to overwrite)"
-        )
 
-    return output_file
+def output_collisions(input_files: list[Path]) -> dict[Path, list[Path]]:
+    """Inputs whose default outputs coincide (review point B5):
+    X_clustered_partN and X_tracked_partN both give X_golden_partN."""
+    by_output: dict[Path, list[Path]] = {}
+
+    for input_file in input_files:
+        by_output.setdefault(build_output_name(input_file), []).append(input_file)
+
+    return {
+        output: inputs
+        for output, inputs in sorted(by_output.items())
+        if len(inputs) > 1
+    }
 
 
 def process_tracked_file(
@@ -272,6 +284,7 @@ def process_tracked_file(
     output_file: Path | None = None,
     force: bool = False,
     detector: str | None = None,
+    scratch_dir: Path | None = None,
 ) -> None:
 
     # No refit on this route: the detector is only checked and recorded.
@@ -285,25 +298,28 @@ def process_tracked_file(
     print(f"Input : {input_file}")
     print(f"Output: {output_file}")
 
-    written_path = run_golden_tracking_from_tracked(
-        tracked_root_file=input_file,
-        output_file=output_file,
-    )
+    with scratch_to_output(output_file, scratch_dir) as scratch_file:
+        written_path = run_golden_tracking_from_tracked(
+            tracked_root_file=input_file,
+            output_file=scratch_file,
+        )
 
-    attach_provenance(
-        written_path,
-        stage="golden",
-        input_path=input_file,
-        parameters={
-            "route": "tracked",
-            "tree_name": TREE_NAME,
-            "detector": detector,
-        },
-    )
+        attach_provenance(
+            written_path,
+            stage="golden",
+            input_path=input_file,
+            parameters={
+                "route": "tracked",
+                "tree_name": TREE_NAME,
+                "detector": detector,
+            },
+            recorded_as=output_file,
+        )
 
-    print(f"Wrote: {written_path}")
+        # Checked before the copy, so an incomplete file is never put in place.
+        inspect_output(Path(written_path))
 
-    inspect_output(Path(written_path))
+    print(f"Wrote: {output_file}")
 
 
 def process_clustered_file(
@@ -312,6 +328,7 @@ def process_clustered_file(
     output_file: Path | None = None,
     force: bool = False,
     detector: str | None = None,
+    scratch_dir: Path | None = None,
 ) -> None:
 
     geometry = tracking_geometry(detector_for([input_file], detector))
@@ -357,30 +374,34 @@ def process_clustered_file(
             f"events={len(events)}, results={len(results)}"
         )
 
-    written_path = run_golden_tracking_output(
-        events=events,
-        results=results,
-        output_path=output_file,
-        tree_name=TREE_NAME,
-    )
+    with scratch_to_output(output_file, scratch_dir) as scratch_file:
+        written_path = run_golden_tracking_output(
+            events=events,
+            results=results,
+            output_path=scratch_file,
+            tree_name=TREE_NAME,
+        )
 
-    attach_provenance(
-        written_path,
-        stage="golden",
-        input_path=input_file,
-        parameters={
-            "route": "clustered",
-            "tree_name": TREE_NAME,
-            **geometry.as_parameters(),
-            "sigma_z": SIGMA_Z,
-            "sigma_y": SIGMA_Y,
-            "proximity_cut_xz": PROXIMITY_CUT_XZ,
-            "proximity_cut_xy": PROXIMITY_CUT_XY,
-        },
-    )
+        attach_provenance(
+            written_path,
+            stage="golden",
+            input_path=input_file,
+            parameters={
+                "route": "clustered",
+                "tree_name": TREE_NAME,
+                **geometry.as_parameters(),
+                "sigma_z": SIGMA_Z,
+                "sigma_y": SIGMA_Y,
+                "proximity_cut_xz": PROXIMITY_CUT_XZ,
+                "proximity_cut_xy": PROXIMITY_CUT_XY,
+            },
+            recorded_as=output_file,
+        )
 
-    print(f"Wrote: {written_path}")
-    inspect_output(Path(written_path))
+        # Checked before the copy, so an incomplete file is never put in place.
+        inspect_output(Path(written_path))
+
+    print(f"Wrote: {output_file}")
 
 
 def process_file(
@@ -390,6 +411,7 @@ def process_file(
     output_file: Path | None = None,
     force: bool = False,
     detector: str | None = None,
+    scratch_dir: Path | None = None,
 ) -> None:
 
     file_type = resolve_input_type(input_file, expected_type)
@@ -400,6 +422,7 @@ def process_file(
             output_file=output_file,
             force=force,
             detector=detector,
+            scratch_dir=scratch_dir,
         )
         return
 
@@ -409,6 +432,7 @@ def process_file(
             output_file=output_file,
             force=force,
             detector=detector,
+            scratch_dir=scratch_dir,
         )
         return
 
@@ -418,13 +442,33 @@ def process_file(
     raise RuntimeError(f"Unknown ROOT format: {input_file}")
 
 
-def get_input_files(path: Path) -> list[Path]:
-    files: list[Path] = []
+def get_input_files(path: Path, input_type: str = "auto") -> list[Path]:
+    """The folder's inputs, by the tree they hold (review point B6):
+    ClusteredData and TrackedData files, or only those of input_type.
 
-    for pattern in INPUT_PATTERNS:
-        files.extend(path.glob(pattern))
+    With auto, a folder holding the clustered and the tracked version
+    of a chunk is refused, since both would give the same golden file
+    (review point B5)."""
+    wanted = INPUT_TYPES if input_type == "auto" else (input_type,)
+    selected, skipped = select_by_type(path, wanted)
+    print_skipped(skipped)
+    files = [file_path for file_path, _ in selected]
 
-    return sorted(set(files))
+    collisions = output_collisions(files)
+
+    if collisions:
+        lines = [
+            f"  {output.name} <- {', '.join(i.name for i in inputs)}"
+            for output, inputs in list(collisions.items())[:5]
+        ]
+        raise ValueError(
+            f"{len(collisions)} golden output(s) would come from two "
+            "inputs, e.g.\n" + "\n".join(lines) + "\n"
+            "Choose one route with --input-type clustered or "
+            "--input-type tracked."
+        )
+
+    return files
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -442,6 +486,8 @@ def _main(argv: list[str] | None = None) -> None:
     if not input_path.exists():
         raise FileNotFoundError(input_path)
 
+    scratch_dir = checked_scratch_dir(arguments.scratch_dir)
+
     print_configuration()
 
     if input_path.is_file():
@@ -451,6 +497,7 @@ def _main(argv: list[str] | None = None) -> None:
             output_file=arguments.output,
             force=arguments.force,
             detector=arguments.detector,
+            scratch_dir=scratch_dir,
         )
         return
 
@@ -459,7 +506,7 @@ def _main(argv: list[str] | None = None) -> None:
             "--output is only valid for a single input file."
         )
 
-    input_files = get_input_files(input_path)
+    input_files = get_input_files(input_path, arguments.input_type)
     print(f"Found {len(input_files):,} input ROOT files.")
 
     if not input_files:
@@ -472,24 +519,12 @@ def _main(argv: list[str] | None = None) -> None:
         print(f"[{index}/{len(input_files)}]")
 
         try:
-            file_type = resolve_input_type(
-                file_path,
-                arguments.input_type,
-            )
-
-            if file_type == "golden":
-                print(f"Skipping Golden ROOT: {file_path.name}")
-                continue
-
-            if file_type == "unknown":
-                print(f"Skipping unknown ROOT: {file_path.name}")
-                continue
-
             process_file(
                 file_path,
                 expected_type=arguments.input_type,
                 force=arguments.force,
                 detector=arguments.detector,
+                scratch_dir=scratch_dir,
             )
 
         except Exception as error:

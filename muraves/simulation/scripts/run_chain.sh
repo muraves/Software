@@ -15,9 +15,15 @@
 # Options after -- are passed to muraves-simCluster, so the
 # digitization method and seed can be chosen per run.
 #
+# Each tool writes its output in scratch and copies it into place (see
+# the README); set TMPDIR to choose the scratch location.
+#
 # Written for the bash 3.2 that ships with macOS.
 
 set -euo pipefail
+
+# Folders and logs group-writable, like the tools' outputs (0775, 0664).
+umask 002
 
 usage() {
     cat <<'EOF'
@@ -44,8 +50,9 @@ Usage: run_chain.sh -o OUTDIR [-i INPUT] [options] [-- CLUSTER_OPTIONS]
 
 Without -f, the track and golden stages skip files whose output
 already exists, so an interrupted run can be resumed by re-running the
-same command. If a run was killed while a file was being written,
-delete that one output before resuming.
+same command. A file that failed leaves no output, so it is run again.
+
+Outputs are written in scratch first: set TMPDIR to choose where.
 
 Examples:
   run_chain.sh -i /data/sim/hits_full.root -o /data/sim/chain_v2 -j 4 -- --detector NERO

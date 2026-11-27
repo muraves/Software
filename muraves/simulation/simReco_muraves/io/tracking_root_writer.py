@@ -586,40 +586,6 @@ def write_tracked_root(
     for key, value in payload.items():
         payload[key] = ak.Array(value)
 
-    # --------------------------------------------------------------
-    # Find the branch that uproot cannot serialize
-    # --------------------------------------------------------------
-    """
-    for key, value in payload.items():
-
-        print(f"Testing branch: {key}")
-
-        try:
-
-            with uproot.recreate("_debug.root") as f:
-                f["test"] = {
-                    key: value,
-                }
-
-        except Exception as exc:
-
-            print()
-            print("=" * 80)
-            print("FAILED BRANCH")
-            print("=" * 80)
-
-            print("Branch:", key)
-            print("Type  :", type(value))
-            print("Form  :", value.type)
-
-            raise RuntimeError(
-                f"Problematic branch: {key}"
-            ) from exc
-    """
-    # --------------------------------------------------------------
-    # Actual output
-    # --------------------------------------------------------------
-
     with uproot.recreate(output_file) as root_file:
         root_file["TrackedData"] = payload
 

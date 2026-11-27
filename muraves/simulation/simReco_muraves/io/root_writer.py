@@ -16,27 +16,33 @@ class RootWriter:
     event's clusters more. The records of an event must arrive one after
     the other; an event that comes back after its chunk was written is an
     error.
+
+    output_dir must be an existing folder; muraves-simCluster gives a
+    scratch folder and copies the chunks to their destination at the end
+    of the run (review point A1). written_files lists the chunks written.
     """
 
     def __init__(
         self,
         output_prefix="musimData_run4_clustered",
-        output_dir="TMP",
+        *,
+        output_dir,
         chunk_size=100_000,
     ):
 
         self.output_prefix = output_prefix
         self.output_dir = Path(output_dir)
 
-        self.output_dir.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
+        if not self.output_dir.is_dir():
+            raise NotADirectoryError(
+                f"RootWriter output_dir is not an existing folder: {self.output_dir}"
+            )
 
         self.chunk_size = chunk_size
 
         self.file_index = 0
         self.n_written = 0
+        self.written_files = []
 
         self._current_event = None
         self._written_events = set()
@@ -213,6 +219,7 @@ class RootWriter:
 
             fout["ClusteredData"] = tree_data
 
+        self.written_files.append(output_file)
         self.n_written += n_clusters
         self.file_index += 1
 
@@ -227,10 +234,6 @@ class RootWriter:
         print()
         print(
             f"Finished writing "
-            f"{self.n_written} clusters"
-        )
-
-        print(
-            f"Output directory: "
-            f"{self.output_dir}"
+            f"{self.n_written} clusters "
+            f"in {len(self.written_files)} chunk(s)"
         )
