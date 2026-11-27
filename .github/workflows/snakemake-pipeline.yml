@@ -47,7 +47,6 @@ jobs:
             muraves:latest bash -c \
             "cd /workspace && \
              source /opt/conda/etc/profile.d/conda.sh && conda activate muraves && \
-             python -m pip install --quiet pytest && \
              python -m pytest muraves_lib/reco/tests -p no:cacheprovider -v"
 
       - name: Run Snakemake workflow in container

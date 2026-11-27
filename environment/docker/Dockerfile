@@ -18,7 +18,8 @@ RUN mamba create -n muraves -y -c conda-forge -c bioconda\
     jupyter \
     zfit \
     snakemake \
-    uproot && \
+    uproot \
+    pytest && \
     mamba clean -afy
 
 # ---- Apptainer-safe conda setup ----
