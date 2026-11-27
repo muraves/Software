@@ -23,9 +23,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from simReco_muraves.detector import known_detectors
 from simReco_muraves.tracking.event_builder_adapter import STATION_MAP
 
-DETECTORS = ("NERO", "ROSSO", "BLU")
+# The detectors are those with a geometry in the shared configuration
+# (simReco_muraves.detector.known_detectors), review point A6 of PR #26.
 
 PLANES = ("Y1", "Y2", "Y3", "Y4", "Z1", "Z2", "Z3", "Z4")
 
@@ -173,6 +175,11 @@ def resolve_conversion_factors(
 
     if detector not in data:
         raise ValueError(f"{detector} is not in the file {path}")
+
+    if run_range is None and detector not in FALLBACK_SETTING:
+        raise ValueError(
+            f"{detector} has no fallback setting; give --run-range"
+        )
 
     runs = _runs_in_range(data[detector], detector, run_range)
 
@@ -365,10 +372,10 @@ def digitization_setup(
             "whose geometry the reconstruction uses"
         )
 
-    if detector not in DETECTORS:
+    if detector not in known_detectors():
         raise ValueError(
             f"unknown detector {detector!r}; expected one of "
-            f"{', '.join(DETECTORS)}"
+            f"{', '.join(known_detectors())}"
         )
 
     if pe_per_cm_file is None:

@@ -1,9 +1,12 @@
 """The simulated detector: its reconstruction geometry and calibration.
 
 The detector is chosen once, at clustering (--detector), and recorded in
-the provenance of every output. Tracking and golden selection read it
-from their input, so a production cannot be reconstructed with another
-detector's geometry by mistake; given again, it must agree.
+the METADATA of every output, as a required field written with the data
+(review point B4 of PR #26). Tracking and golden selection read it from
+their input, so a production cannot be reconstructed with another
+detector's geometry by mistake. An input that records none, or whose
+record cannot be read, is an error; --detector given again is only a
+check, and must agree.
 
 The geometry is the detector's entry in the shared reconstruction
 configuration (detector_geometry), the same one the data chain uses: the
@@ -74,45 +77,65 @@ def packaged_calibration_file() -> Path:
 
 
 def recorded_detector(path: str | Path) -> str | None:
-    """The detector the clustering stage recorded in a file's provenance."""
+    """The detector a file records, or None if it records none.
+
+    METADATA's detector field; in files written before METADATA, the
+    clustering stage's detector parameter. A record that cannot be read
+    raises (simReco_muraves.io.provenance_tree.ProvenanceError).
+    """
     # Imported here: reading ROOT files needs uproot, the rest of this
     # module does not.
-    from simReco_muraves.io.provenance_tree import read_chain
+    from simReco_muraves.io.provenance_tree import read_metadata
+
+    metadata = read_metadata(path)
+
+    if metadata is None:
+        return None
+
+    if metadata.get("detector"):
+        return metadata["detector"]
 
     detector = None
-    for stage in read_chain(path):
+    for stage in metadata.get("stages", []):
         if stage.get("stage") == "clusterization":
             detector = (stage.get("parameters") or {}).get("detector")
     return detector
 
 
 def detector_for(input_files: Iterable[str | Path], given: str | None) -> str:
-    """The detector to reconstruct `input_files` with.
+    """The detector to reconstruct `input_files` with: the one they record.
 
-    Taken from the inputs' provenance; --detector (`given`) is needed only
-    for inputs that record none, and must agree with what they record.
+    Every input must record one (review point B4); --detector (`given`)
+    is only a check, and must agree.
     """
-    recorded = {recorded_detector(path) for path in input_files} - {None}
+    recorded = {Path(path): recorded_detector(path) for path in input_files}
 
-    if len(recorded) > 1:
+    if not recorded:
+        raise ValueError("no input file to take the detector from")
+
+    missing = [path.name for path, detector in recorded.items() if detector is None]
+
+    if missing:
         raise ValueError(
-            f"the inputs come from different detectors: {', '.join(sorted(recorded))}"
+            f"{missing[0]} records no detector: it was clustered before the "
+            "detector was recorded. Cluster it again from its Geant4 hits "
+            "(muraves-simCluster --detector ...), or reconstruct it with the "
+            "standalone simReco-muraves repository (tag standalone-final)."
         )
 
-    from_inputs = next(iter(recorded), None)
+    detectors = set(recorded.values())
 
-    if given is not None and from_inputs is not None and given != from_inputs:
+    if len(detectors) > 1:
+        raise ValueError(
+            f"the inputs come from different detectors: {', '.join(sorted(detectors))}"
+        )
+
+    detector = detectors.pop()
+
+    if given is not None and given != detector:
         raise ValueError(
             f"--detector {given} disagrees with the input, which was "
-            f"clustered for {from_inputs}"
-        )
-
-    detector = given or from_inputs
-
-    if detector is None:
-        raise ValueError(
-            "the input records no detector (clustered before --detector "
-            "existed); give --detector"
+            f"clustered for {detector}"
         )
 
     tracking_geometry(detector)  # validates the name

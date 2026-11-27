@@ -7,12 +7,13 @@ forward from its input, so a golden file knows not only the tracking
 parameters that made it but the digitization constant that made the
 clusters it descends from.
 
-This module builds and chains those records. It does no I/O on ROOT
-files; see simReco_muraves.io.provenance_tree for that.
+This module builds and chains those records, and the METADATA record
+that carries them (build_metadata). It does no I/O on ROOT files; see
+simReco_muraves.io.provenance_tree for that.
 
-Collection is best-effort by design. A provenance failure must never
-abort a production run, so every lookup here degrades to "unknown"
-rather than raising.
+The environment lookups (git, versions) are best-effort: outside a git
+checkout they give "unknown". Writing and reading the record are not:
+since review point A2 of PR #26, a failure there is an error.
 """
 
 from __future__ import annotations
@@ -47,18 +48,25 @@ DISTRIBUTION_NAMES = ("muraves-lib",)
 
 _GIT_TIMEOUT_SECONDS = 5
 
+#: The folder whose git state is recorded: the checkout this package runs from.
+REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
+
+#: Layout of the METADATA record (build_metadata). Bump when keys are added,
+#: removed or change meaning.
+#:
+#:   1  the data chain's keys, plus detector and stages (review point A2)
+METADATA_VERSION = 1
+
 
 # ----------------------------------------------------------------------
 # Environment lookups
 # ----------------------------------------------------------------------
 
 def _run_git(arguments: Sequence[str]) -> str | None:
-    repository_root = Path(__file__).resolve().parent.parent
-
     try:
         completed = subprocess.run(
             ["git", *arguments],
-            cwd=repository_root,
+            cwd=REPOSITORY_ROOT,
             capture_output=True,
             text=True,
             timeout=_GIT_TIMEOUT_SECONDS,
@@ -219,6 +227,60 @@ def extend_chain(
     return chain
 
 
+def metadata_header(
+    *,
+    config_files: Sequence[str | Path] | None = None,
+    extra_files: Sequence[str | Path] = (),
+) -> dict[str, Any]:
+    """The data chain's keys of the METADATA record, from muraves_lib.root_wrapper.
+
+    commit, latest_release, algorithms and generated_at, for this
+    package's checkout; detector_config_files, the reconstruction
+    parameter files (default: the simulation chain's) with their SHA-256
+    and content. extra_files, e.g. the NPE/cm calibration, are recorded
+    with their SHA-256 but without their content.
+    """
+    from muraves_lib import root_wrapper
+    from muraves_lib.reco.reco_config import package_config_paths
+
+    if config_files is None:
+        config_files = package_config_paths("simulation")
+
+    header = root_wrapper.get_git_metadata(repo_dir=REPOSITORY_ROOT)
+    files = root_wrapper._build_config_file_metadata([str(path) for path in config_files])
+
+    for entry in root_wrapper._build_config_file_metadata([str(path) for path in extra_files]):
+        entry.pop("parsed_content", None)
+        files.append(entry)
+
+    header["detector_config_files"] = files
+    return header
+
+
+def build_metadata(
+    *,
+    detector: str,
+    stages: Sequence[Mapping[str, Any]],
+    header: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The METADATA record of an output file (review points A2 and B4).
+
+    The data chain's keys (metadata_header, built here unless given), so
+    that its tools read simulation files too, then: detector, the
+    simulated detector, a required field; stages, the lineage; and
+    simulation_metadata_version.
+    """
+    if not isinstance(detector, str) or not detector:
+        raise ValueError(f"METADATA needs the detector, got {detector!r}")
+
+    metadata = dict(header if header is not None else metadata_header())
+    metadata["detector"] = detector
+    metadata["stages"] = [dict(entry) for entry in stages]
+    metadata["simulation_metadata_version"] = METADATA_VERSION
+
+    return metadata
+
+
 def chain_to_json(chain: Sequence[Mapping[str, Any]]) -> str:
     return json.dumps(list(chain), sort_keys=True)
 
@@ -243,13 +305,36 @@ def chain_from_json(text: str) -> list[dict[str, Any]]:
 # Presentation
 # ----------------------------------------------------------------------
 
+def summarize_metadata(metadata: Mapping[str, Any]) -> str:
+    """The record's header, for muraves-sim --provenance."""
+    if metadata.get("legacy"):
+        return (
+            "format         : Metadata tree (written before METADATA, "
+            "review point A2)"
+        )
+
+    lines = [
+        "format         : METADATA, version "
+        f"{metadata.get('simulation_metadata_version', UNKNOWN)}",
+        f"detector       : {metadata.get('detector', UNKNOWN)}",
+        f"commit         : {metadata.get('commit') or UNKNOWN}",
+        f"latest release : {metadata.get('latest_release') or UNKNOWN}",
+        f"generated at   : {metadata.get('generated_at', UNKNOWN)}",
+    ]
+
+    for entry in metadata.get("detector_config_files") or []:
+        sha = str(entry.get("sha256", UNKNOWN))[:16]
+        lines.append(f"config file    : {entry.get('path', UNKNOWN)}  sha256 {sha}...")
+
+    return "\n".join(lines)
+
+
 def summarize_chain(chain: Sequence[Mapping[str, Any]]) -> str:
     """Human-readable lineage, for muraves-sim --provenance."""
     if not chain:
         return (
             "No provenance recorded.\n\n"
-            "The file predates provenance recording, or metadata "
-            "could not be written when it was produced."
+            "The file predates provenance recording."
         )
 
     lines: list[str] = []

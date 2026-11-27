@@ -195,15 +195,22 @@ equivalent of `data_path`) is left to the production workflow, #28.
 
 ### Detector and geometry
 
-`--detector {NERO,ROSSO,BLU}` is required at clustering. It names the
-simulated detector, is recorded in the provenance of every output, and
-goes into the output names (`<stem>_NERO_clustered_partNNN.root`). The
-tracking and golden stages reconstruct with that detector's geometry,
-its entry in `muraves_lib/configuration/shared/reco_parameters.json`
+`--detector` is required at clustering; its choices are the detectors
+with a geometry in the shared configuration (NERO, ROSSO, BLU). It names
+the simulated detector, is recorded in the `METADATA` of every output as
+a required field, and goes into the output names
+(`<stem>_NERO_clustered_partNNN.root`). The tracking and golden stages
+reconstruct with that detector's geometry, its entry in
+`muraves_lib/configuration/shared/reco_parameters.json`
 (`detector_geometry`), which is the same entry the data chain uses: the
-simulated productions are generated with exactly that geometry. They
-read the detector from their input; `--detector` there is needed only
-for inputs that record none, and must agree with what they record.
+simulated productions are generated with exactly that geometry.
+
+They always take the detector from their input. An input that records
+none (clustered before the detector was recorded), or whose record
+cannot be read, is refused: cluster it again from its Geant4 hits, or
+reconstruct it with the standalone repository's tag `standalone-final`.
+`--detector` on these stages is only a check: if given, it must agree
+with what the input records.
 
 `fullRun_v3` was generated with an earlier Geant4 geometry (g4-sim
 `bac9b35`) that is not in the configuration; it is reproducible from
@@ -336,7 +343,8 @@ The suite covers every stage:
 | clustering | bar aggregation, plane building, digitization including seeding and per-station factors, the clusterizer's inputs, cluster records |
 | tracking | the straight-line fit, candidate building in `MakeTracks`, the angle convention, event building, four-plane candidate selection, and whole synthetic tracks end to end |
 | golden tracks | the projection shared by both routes |
-| provenance | records, chaining, and storage in ROOT files |
+| provenance | records, chaining, the `METADATA` record and its storage in ROOT files, reading older files, errors on unreadable records |
+| detector | the detector a stage takes from its input, and its refusal of inputs that record none |
 | outputs | writing through scratch, permissions, clustering's chunk replacement, directory inputs |
 
 The end-to-end tracking tests double as a regression test for the
@@ -356,28 +364,48 @@ belong to the validation pipeline.
 
 ## Provenance
 
-Every output file carries a record of what produced it, in a one-entry
-`Metadata` tree alongside the physics tree. Each stage appends to the
-lineage it inherits from its input, so a golden file records not only
-its tracking parameters but the digitization constant that made the
-clusters it descends from.
+Every output file carries a record of what produced it, in the data
+chain's format: a JSON string under the key `METADATA` (a `TObjString`),
+which `muraves_lib.root_wrapper.load_root_metadata` and
+`print_metadata.py` read as they read the data chain's files. It holds:
+
+- the data chain's keys, for the stage that wrote the file: `commit`
+  (of this package's checkout), `latest_release`, `algorithms`,
+  `generated_at`, and `detector_config_files`, the reconstruction
+  parameter files with their SHA-256 and content. The NPE/cm
+  calibration, when used, is recorded with its SHA-256 only;
+- `detector`, the simulated detector (a required field, see above);
+- `stages`, the lineage. Each stage appends a record to the lineage it
+  inherits from its input, so a golden file records not only its
+  tracking parameters but the digitization constant that made the
+  clusters it descends from. A record holds the stage name, a UTC
+  timestamp, the input and output paths (the final ones, not the
+  scratch copy), the full git commit and whether the working tree was
+  dirty, the package and library versions, and the parameters that
+  stage actually used;
+- `simulation_metadata_version`, the layout of this record.
 
 ```bash
 muraves-sim --provenance hits_NERO_golden_part000.root
 ```
 
-The record holds the stage name, a UTC timestamp, the git commit and
-whether the working tree was dirty, the package and library versions,
-and the parameters that stage actually used.
+The record is written into the scratch copy of the output, before it is
+copied to its destination, so it works on `/pnfs`. Writing it, and
+reading the input's, are strict: a failure is an error and the stage
+leaves no output. Only the git lookups are best-effort: outside a git
+checkout, the commit is `unknown`.
 
-Recording is best-effort: if git is unavailable or the metadata cannot
-be written, the stage warns and continues rather than failing a
-production run. A file can therefore legitimately have no provenance,
-which is also the case for anything produced before this was added.
+Files written before `METADATA` hold the lineage in a one-entry
+`Metadata` tree (or a `Metadata_json` string); they are still read.
 
-Note that a golden file made from ClusteredData records three stages
-and one made from TrackedData records four, so two golden files whose
-physics branches are identical still differ in their metadata. That is
+Tracking records `depth_correction_applied: false`: the shared
+configuration enables the depth correction of 2-bar clusters, but the
+simulation does not pass cluster depths to `MakeTracks` yet (#32), and
+`muraves-simTrk` logs a warning saying so.
+
+Note that a golden file made from ClusteredData records one stage fewer
+than one made from TrackedData, so two golden files whose physics
+branches are identical still differ in their metadata. That is
 intended: the lineage describes how the file was made.
 
 ### Schema version

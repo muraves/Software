@@ -2,8 +2,9 @@
 
 """Provenance: building records, chaining them, storing them in ROOT.
 
-The record logic is pure Python and tested directly. Storage in the
-Metadata tree needs uproot and is skipped where it is not installed.
+The record logic is pure Python and tested directly. Storage as METADATA
+in real ROOT files needs uproot and is skipped where it is not installed;
+tests/test_metadata.py tests the same logic with uproot replaced.
 """
 
 from __future__ import annotations
@@ -169,7 +170,7 @@ def test_summary_lists_parameters_in_order():
 
 
 # ----------------------------------------------------------------------
-# Storage in ROOT files
+# Storage in ROOT files (real uproot)
 # ----------------------------------------------------------------------
 
 def provenance_tree():
@@ -188,59 +189,110 @@ def write_plain_file(path):
         root_file["Data"] = {"value": numpy.arange(3)}
 
 
-def test_chain_round_trips_through_a_root_file(tmp_path):
-    tree = provenance_tree()
-
-    path = tmp_path / "out.root"
-    write_plain_file(path)
-
-    chain = [
-        {
-            "stage": "clusterization",
-            "code_version": "abc123",
-            "schema_version": 2,
-            "timestamp": "2026-10-27T10:00:00Z",
-        }
-    ]
-
-    assert tree.write_chain(path, chain)
-    assert tree.read_chain(path) == chain
-
-    summary = tree.read_summary(path)
-
-    assert summary["stages"] == 1
-    assert summary["stage"] == "clusterization"
+def metadata(stages=None):
+    return {
+        "commit": "abc123",
+        "latest_release": "v2.0.0",
+        "algorithms": {},
+        "generated_at": "2026-11-27T10:00:00",
+        "detector_config_files": [],
+        "detector": "NERO",
+        "stages": stages if stages is not None else [{"stage": "clusterization"}],
+        "simulation_metadata_version": 1,
+    }
 
 
-def test_writing_provenance_leaves_the_physics_tree_alone(tmp_path):
+def test_metadata_round_trips_as_the_data_chains_tobjstring(tmp_path):
     tree = provenance_tree()
     import uproot
 
     path = tmp_path / "out.root"
     write_plain_file(path)
-    tree.write_chain(path, [{"stage": "clusterization"}])
+    tree.write_metadata(path, metadata())
+
+    assert tree.read_metadata(path) == metadata()
+    assert tree.read_chain(path) == [{"stage": "clusterization"}]
+
+    with uproot.open(path) as root_file:
+        # The data chain's format: a TObjString holding the JSON, under METADATA.
+        assert root_file.classname_of("METADATA") == "TObjString"
+        assert json.loads(str(root_file["METADATA"])) == metadata()
+
+
+def test_writing_metadata_leaves_the_physics_tree_alone(tmp_path):
+    tree = provenance_tree()
+    import uproot
+
+    path = tmp_path / "out.root"
+    write_plain_file(path)
+    tree.write_metadata(path, metadata())
 
     with uproot.open(path) as root_file:
         assert root_file["Data"]["value"].array(library="np").tolist() == [0, 1, 2]
 
 
-def test_file_without_provenance_reads_as_empty(tmp_path):
+def test_file_without_metadata_reads_as_none(tmp_path):
     tree = provenance_tree()
 
     path = tmp_path / "plain.root"
     write_plain_file(path)
 
+    assert tree.read_metadata(path) is None
     assert tree.read_chain(path) == []
 
 
-def test_missing_file_reads_as_empty(tmp_path):
+def test_missing_file_is_an_error(tmp_path):
     tree = provenance_tree()
 
-    assert tree.read_chain(tmp_path / "absent.root") == []
+    with pytest.raises(FileNotFoundError):
+        tree.read_metadata(tmp_path / "absent.root")
 
 
-def test_attach_provenance_chains_from_the_input(tmp_path, monkeypatch):
+def test_a_file_that_is_not_root_is_an_error(tmp_path):
     tree = provenance_tree()
+
+    path = tmp_path / "broken.root"
+    path.write_text("not a ROOT file")
+
+    with pytest.raises(tree.ProvenanceError):
+        tree.read_metadata(path)
+
+
+def test_legacy_metadata_string_is_still_read(tmp_path):
+    tree = provenance_tree()
+    import uproot
+
+    path = tmp_path / "old.root"
+    write_plain_file(path)
+    chain = [{"stage": "clusterization", "parameters": {"detector": "ROSSO"}}]
+
+    with uproot.update(path) as root_file:
+        root_file["Metadata_json"] = json.dumps(chain)
+
+    assert tree.read_metadata(path) == {"stages": chain, "legacy": True}
+
+
+def test_legacy_metadata_tree_is_still_read(tmp_path):
+    tree = provenance_tree()
+    import awkward
+    import uproot
+
+    path = tmp_path / "old.root"
+    write_plain_file(path)
+    chain = [{"stage": "clusterization", "parameters": {"detector": "ROSSO"}}]
+
+    try:
+        with uproot.update(path) as root_file:
+            root_file["Metadata"] = {"provenance_json": awkward.Array([json.dumps(chain)])}
+    except Exception as error:
+        pytest.skip(f"this uproot cannot write string branches ({error}), so no legacy file has this form")
+
+    assert tree.read_metadata(path) == {"stages": chain, "legacy": True}
+
+
+def test_attach_provenance_chains_from_a_legacy_input(tmp_path, monkeypatch):
+    tree = provenance_tree()
+    import uproot
 
     monkeypatch.setattr(pv, "git_state", lambda: ("abc123", False))
 
@@ -248,17 +300,34 @@ def test_attach_provenance_chains_from_the_input(tmp_path, monkeypatch):
     downstream = tmp_path / "tracked.root"
     write_plain_file(upstream)
     write_plain_file(downstream)
-    tree.write_chain(upstream, [{"stage": "clusterization"}])
 
-    assert tree.attach_provenance(
+    with uproot.update(upstream) as root_file:
+        root_file["Metadata_json"] = json.dumps(
+            [{"stage": "clusterization", "parameters": {"detector": "NERO"}}]
+        )
+
+    written = tree.attach_provenance(
         downstream,
         stage="tracking",
+        detector="NERO",
         input_path=upstream,
         parameters={"sigma_z": 0.004},
         quiet=True,
     )
 
-    assert [entry["stage"] for entry in tree.read_chain(downstream)] == [
-        "clusterization",
-        "tracking",
-    ]
+    assert tree.read_metadata(downstream) == written
+    assert written["detector"] == "NERO"
+    assert [entry["stage"] for entry in written["stages"]] == ["clusterization", "tracking"]
+    assert {"commit", "latest_release", "algorithms", "generated_at", "detector_config_files"} <= set(written)
+
+
+def test_the_data_chains_reader_reads_simulation_metadata(tmp_path):
+    tree = provenance_tree()
+    pytest.importorskip("ROOT")
+    from muraves_lib import root_wrapper
+
+    path = tmp_path / "out.root"
+    write_plain_file(path)
+    tree.write_metadata(path, metadata())
+
+    assert root_wrapper.load_root_metadata(path) == metadata()

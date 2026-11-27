@@ -505,6 +505,35 @@ def test_cli_detector_is_case_insensitive():
     assert arguments.run_range == (10061, 11918)
 
 
+def test_cli_detectors_are_the_configured_ones(monkeypatch):
+    """A6: the --detector choices come from the shared configuration."""
+    module = cli()
+    monkeypatch.setattr(module, "known_detectors", lambda: ("NERO", "VERDE"))
+
+    assert module.parse_arguments(["hits.root", "-o", "out", "--detector", "verde"]).detector == "VERDE"
+
+    with pytest.raises(SystemExit):
+        module.parse_arguments(["hits.root", "-o", "out", "--detector", "BLU"])
+
+
+def test_digitization_setup_takes_the_configured_detectors(monkeypatch):
+    """A6: one list of detectors, from the shared configuration."""
+    from simReco_muraves.clustering import conversion_factors
+
+    monkeypatch.setattr(conversion_factors, "known_detectors", lambda: ("VERDE",))
+
+    assert conversion_factors.digitization_setup(
+        pe_per_mev=None, pe_per_cm_file=None, detector="VERDE",
+        run_range=None, default_pe_per_mev=8.5,
+    ).provenance["detector"] == "VERDE"
+
+    with pytest.raises(ValueError, match="unknown detector"):
+        conversion_factors.digitization_setup(
+            pe_per_mev=None, pe_per_cm_file=None, detector="NERO",
+            run_range=None, default_pe_per_mev=8.5,
+        )
+
+
 @pytest.mark.parametrize(
     "extra",
     [

@@ -102,8 +102,9 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         type=str.upper,
         default=None,
         help=(
-            "Simulated detector, for inputs that record none. Normally "
-            "taken from the input's provenance; if given, it must agree."
+            "Check only: the detector the input must record. The "
+            "detector is always taken from the input's METADATA; an "
+            "input that records none is refused."
         ),
     )
 
@@ -174,7 +175,7 @@ def process_file(
     configuration = get_reco_config(chain="simulation")
 
     results = run_tracking_pipeline(
-        clusters,
+        tracking_events,
         x_pos=geometry.x_pos,
         z_add=geometry.z_add,
         y_add=geometry.y_add,
@@ -187,12 +188,6 @@ def process_file(
     )
 
     print(f"Tracking results: {len(results):,}")
-
-    if len(tracking_events) != len(results):
-        raise RuntimeError(
-            "Tracking event/result count mismatch: "
-            f"events={len(tracking_events)}, results={len(results)}"
-        )
 
     records: list[TrackedEventRecord] = [
         build_tracked_event_record(event, result)
@@ -207,6 +202,7 @@ def process_file(
         attach_provenance(
             scratch_file,
             stage="tracking",
+            detector=geometry.detector,
             input_path=input_file,
             parameters={
                 **geometry.as_parameters(),
@@ -215,6 +211,9 @@ def process_file(
                 "proximity_cut_xz": PROXIMITY_CUT_XZ,
                 "proximity_cut_xy": PROXIMITY_CUT_XY,
                 "events": len(tracking_events),
+                # The shared configuration enables it, but the simulation
+                # does not pass cluster depths to MakeTracks yet (#32).
+                "depth_correction_applied": False,
             },
             recorded_as=output_file,
         )

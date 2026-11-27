@@ -139,8 +139,9 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         type=str.upper,
         default=None,
         help=(
-            "Simulated detector, for inputs that record none. Normally "
-            "taken from the input's provenance; if given, it must agree."
+            "Check only: the detector the input must record. The "
+            "detector is always taken from the input's METADATA; an "
+            "input that records none is refused."
         ),
     )
 
@@ -307,6 +308,7 @@ def process_tracked_file(
         attach_provenance(
             written_path,
             stage="golden",
+            detector=detector,
             input_path=input_file,
             parameters={
                 "route": "tracked",
@@ -354,7 +356,7 @@ def process_clustered_file(
     configuration = get_reco_config(chain="simulation")
 
     results = run_tracking_pipeline(
-        clusters,
+        events,
         x_pos=geometry.x_pos,
         z_add=geometry.z_add,
         y_add=geometry.y_add,
@@ -368,12 +370,6 @@ def process_clustered_file(
 
     print(f"Tracking results: {len(results):,}")
 
-    if len(events) != len(results):
-        raise RuntimeError(
-            "Tracking event/result count mismatch: "
-            f"events={len(events)}, results={len(results)}"
-        )
-
     with scratch_to_output(output_file, scratch_dir) as scratch_file:
         written_path = run_golden_tracking_output(
             events=events,
@@ -385,6 +381,7 @@ def process_clustered_file(
         attach_provenance(
             written_path,
             stage="golden",
+            detector=geometry.detector,
             input_path=input_file,
             parameters={
                 "route": "clustered",
@@ -394,6 +391,9 @@ def process_clustered_file(
                 "sigma_y": SIGMA_Y,
                 "proximity_cut_xz": PROXIMITY_CUT_XZ,
                 "proximity_cut_xy": PROXIMITY_CUT_XY,
+                # The shared configuration enables it, but the simulation
+                # does not pass cluster depths to MakeTracks yet (#32).
+                "depth_correction_applied": False,
             },
             recorded_as=output_file,
         )

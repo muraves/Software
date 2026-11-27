@@ -179,7 +179,7 @@ def test_make_output_dir_refuses_a_file(tmp_path):
 
 @pytest.fixture
 def chains(monkeypatch):
-    """The chains attach_provenance writes, by file, without ROOT."""
+    """The METADATA attach_provenance writes, by file, without ROOT."""
     from simReco_muraves import provenance
     from simReco_muraves.io import provenance_tree
 
@@ -187,11 +187,10 @@ def chains(monkeypatch):
     monkeypatch.setattr(provenance, "git_state", lambda: ("abc123", False))
     monkeypatch.setattr(provenance_tree, "read_chain", lambda path: [])
 
-    def write_chain(path, chain):
-        written[Path(path)] = chain
-        return True
+    def write_metadata(path, metadata):
+        written[Path(path)] = metadata
 
-    monkeypatch.setattr(provenance_tree, "write_chain", write_chain)
+    monkeypatch.setattr(provenance_tree, "write_metadata", write_metadata)
     return provenance_tree, written
 
 
@@ -199,11 +198,12 @@ def test_attach_provenance_records_the_final_path(chains, tmp_path):
     tree, written = chains
     scratch_file = tmp_path / "scratch" / "x.root"
 
-    assert tree.attach_provenance(
-        scratch_file, stage="tracking", quiet=True, recorded_as="/pnfs/x.root"
+    tree.attach_provenance(
+        scratch_file, stage="tracking", detector="NERO", quiet=True, recorded_as="/pnfs/x.root"
     )
 
-    assert written[scratch_file][-1]["output_file"] == "/pnfs/x.root"
+    assert written[scratch_file]["stages"][-1]["output_file"] == "/pnfs/x.root"
+    assert written[scratch_file]["detector"] == "NERO"
 
 
 def test_attach_provenance_to_many_records_one_final_path_each(chains, tmp_path):
@@ -211,12 +211,17 @@ def test_attach_provenance_to_many_records_one_final_path_each(chains, tmp_path)
     chunks = [tmp_path / "a_part000.root", tmp_path / "a_part001.root"]
     final = [Path("/pnfs/a_part000.root"), Path("/pnfs/a_part001.root")]
 
-    assert tree.attach_provenance_to_many(chunks, stage="clusterization", recorded_as=final) == 2
+    assert tree.attach_provenance_to_many(
+        chunks, stage="clusterization", detector="BLU", recorded_as=final
+    ) == 2
 
-    assert [written[c][-1]["output_file"] for c in chunks] == [str(f) for f in final]
+    assert [written[c]["stages"][-1]["output_file"] for c in chunks] == [str(f) for f in final]
+    assert {written[c]["detector"] for c in chunks} == {"BLU"}
 
     with pytest.raises(ValueError):
-        tree.attach_provenance_to_many(chunks, stage="clusterization", recorded_as=final[:1])
+        tree.attach_provenance_to_many(
+            chunks, stage="clusterization", detector="BLU", recorded_as=final[:1]
+        )
 
 
 # ----------------------------------------------------------------------
@@ -394,8 +399,10 @@ def test_tracking_writes_through_scratch(tmp_path, monkeypatch):
     def attach(path, **kw):
         seen["written"] = Path(path)
         seen["recorded_as"] = kw["recorded_as"]
+        seen["detector"] = kw["detector"]
+        seen["depth_correction_applied"] = kw["parameters"]["depth_correction_applied"]
         seen["destination_empty"] = not output.exists()
-        return True
+        return {}
 
     monkeypatch.setattr(run_tracking, "attach_provenance", attach)
 
@@ -403,6 +410,8 @@ def test_tracking_writes_through_scratch(tmp_path, monkeypatch):
 
     assert seen["written"] != output and seen["written"].name == output.name
     assert seen["recorded_as"] == output
+    assert seen["detector"] == "NERO"
+    assert seen["depth_correction_applied"] is False
     assert seen["destination_empty"]
     assert output.read_bytes() == b"tracked"
     assert mode(output) == file_handler.OUTPUT_FILE_MODE
@@ -563,6 +572,8 @@ def clustering(tmp_path, monkeypatch):
         seen["provenance_files"] = list(paths)
         seen["recorded_as"] = list(options["recorded_as"])
         seen["parameters"] = options["parameters"]
+        seen["detector"] = options["detector"]
+        seen["extra_files"] = list(options["extra_files"])
         seen["in_scratch"] = all(p.is_file() and p.parent != destination for p in paths)
         seen["destination_then"] = sorted(q.name for q in destination.iterdir())
         return len(paths)
@@ -604,12 +615,22 @@ def test_clustering_writes_its_chunks_in_scratch_and_copies_them_at_the_end(clus
     assert seen["recorded_as"] == [clustering.destination / name for name in names]
     assert seen["parameters"]["events_processed"] == 3
     assert seen["parameters"]["total_clusters"] == 6
+    assert seen["detector"] == "NERO"
+    assert seen["extra_files"] == []  # energy method: no calibration file
 
     assert chunk_names(clustering.destination) == names
     for name in names:
         assert mode(clustering.destination / name) == file_handler.OUTPUT_FILE_MODE
     assert mode(clustering.destination) == file_handler.OUTPUT_DIR_MODE
     assert scratch_folders(clustering.scratch_dir) == []
+
+
+def test_clustering_records_the_calibration_file_it_used(clustering):
+    from simReco_muraves.detector import packaged_calibration_file
+
+    clustering.run("--pe-per-cm-file", "--run-range", "5710-5759")
+
+    assert clustering.seen["extra_files"] == [str(packaged_calibration_file().resolve())]
 
 
 def test_clustering_refuses_chunks_left_in_the_output_directory(clustering):

@@ -2,12 +2,8 @@
 
 from __future__ import annotations
 
-from simReco_muraves.models.cluster_record import ClusterRecord
+from simReco_muraves.models.tracking_event import TrackingEvent
 from simReco_muraves.models.tracking_results import TrackingResult
-
-from simReco_muraves.tracking.event_builder_adapter import (
-    build_tracking_events,
-)
 
 from simReco_muraves.tracking.reconstruction_adapter import (
     reconstruct_event,
@@ -15,7 +11,7 @@ from simReco_muraves.tracking.reconstruction_adapter import (
 
 
 def run_tracking_pipeline(
-    clusters: list[ClusterRecord],
+    events: list[TrackingEvent],
     *,
     x_pos: list[float],
     z_add: list[float],
@@ -28,17 +24,16 @@ def run_tracking_pipeline(
     strips_cfg: dict | None = None,
 ) -> list[TrackingResult]:
     """
-    Run MURAVES tracking reconstruction on a flat list of ClusterRecord
-    objects, returning one TrackingResult per (ProcessID, Event) in the
-    order build_tracking_events produces the events. The entry points
-    rely on that order when they pair events with results.
+    Run MURAVES tracking reconstruction on the events the caller built
+    (build_tracking_events), returning one TrackingResult per event, in
+    the same order. The events are passed in, rather than rebuilt here
+    from the clusters, so that each caller pairs results with the very
+    events they came from (review point A8 of PR #26).
     """
-
-    tracking_events = build_tracking_events(clusters)
 
     results: list[TrackingResult] = []
 
-    for event in tracking_events:
+    for event in events:
 
         result = reconstruct_event(
             event=event,

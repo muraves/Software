@@ -129,7 +129,7 @@ GEOMETRY = dict(
 
 
 def test_pipeline_results_follow_event_order(monkeypatch):
-    """The entry points zip events with results; the orders must match."""
+    """One result per event the caller passes, in its order (A8)."""
     seen = []
 
     def fake_reconstruct(event, **configuration):
@@ -145,9 +145,10 @@ def test_pipeline_results_follow_event_order(monkeypatch):
         cluster(1, 7, 0),
     ]
 
-    results = pipeline.run_tracking_pipeline(clusters, **GEOMETRY)
+    events = build_tracking_events(clusters)
+    results = pipeline.run_tracking_pipeline(events, **GEOMETRY)
 
-    assert results == identities(build_tracking_events(clusters))
+    assert results == identities(events)
     assert len(seen) == len(results)
 
 
@@ -160,6 +161,6 @@ def test_pipeline_passes_the_configuration_through(monkeypatch):
 
     monkeypatch.setattr(pipeline, "reconstruct_event", fake_reconstruct)
 
-    pipeline.run_tracking_pipeline([cluster(1, 1, 0)], **GEOMETRY)
+    pipeline.run_tracking_pipeline(build_tracking_events([cluster(1, 1, 0)]), **GEOMETRY)
 
     assert received == GEOMETRY

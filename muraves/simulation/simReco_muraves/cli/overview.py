@@ -71,18 +71,21 @@ def print_overview() -> None:
 def print_provenance(path: Path) -> int:
     # Imported here so that the plain overview works even if the ROOT
     # dependencies are unavailable.
-    from simReco_muraves.io.provenance_tree import read_chain
-    from simReco_muraves.provenance import summarize_chain
+    from simReco_muraves.io.provenance_tree import read_metadata
+    from simReco_muraves.provenance import summarize_chain, summarize_metadata
 
-    if not path.is_file():
-        raise FileNotFoundError(path)
-
-    chain = read_chain(path)
+    metadata = read_metadata(path)
 
     print()
     print(f"Provenance: {path}")
     print("=" * 60)
     print()
+
+    if metadata is not None:
+        print(summarize_metadata(metadata))
+        print()
+
+    chain = metadata["stages"] if metadata is not None else []
     print(summarize_chain(chain))
     print()
 

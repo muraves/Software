@@ -60,5 +60,6 @@ package-dir = {"simReco_muraves" = "muraves/simulation/simReco_muraves"}
 ]
 
 [tool.pytest.ini_options]
-# The simulation reconstruction's tests; run python -m pytest from this folder.
-testpaths = ["muraves/simulation/simReco_muraves"]
+# The reconstruction core's and the simulation reconstruction's tests;
+# run python -m pytest from this folder.
+testpaths = ["muraves_lib/reco/tests", "muraves/simulation/simReco_muraves"]

@@ -6,8 +6,8 @@
     python -m simReco_muraves.cli.run_clusterization <hit_root_file> --detector NERO -o OUTPUT_DIR
 
 The chunks are written to a scratch folder. At the end of the run, the
-provenance (with the run's totals) is added to each, and they are
-copied to OUTPUT_DIR (review point A1 of PR #26). The run refuses to
+METADATA (with the run's totals) is added to each, and they are
+copied to OUTPUT_DIR (review points A1 and A2 of PR #26). The run refuses to
 start if OUTPUT_DIR already holds chunks of the same prefix, unless
 --force, which replaces them: those this run does not rewrite are
 removed (review point B2). If the run fails, no chunk of the prefix is
@@ -42,9 +42,8 @@ from simReco_muraves.io.provenance_tree import (
 from simReco_muraves.io.root_reader import RootReader
 from simReco_muraves.io.root_writer import RootWriter
 from simReco_muraves.clustering.seeding import SEEDING_SCHEME
-from simReco_muraves.detector import packaged_calibration_file
+from simReco_muraves.detector import known_detectors, packaged_calibration_file
 from simReco_muraves.clustering.conversion_factors import (
-    DETECTORS,
     digitization_setup,
     parse_run_range,
 )
@@ -145,11 +144,11 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--detector",
         type=str.upper,
-        choices=DETECTORS,
+        choices=known_detectors(),
         required=True,
         help=(
-            "Simulated detector (required). Recorded in provenance: the "
-            "tracking and golden stages reconstruct with its geometry. "
+            "Simulated detector (required). Recorded in each output's "
+            "METADATA: the tracking and golden stages reconstruct with its geometry. "
             "With --pe-per-cm-file, also selects its calibration."
         ),
     )
@@ -385,9 +384,13 @@ def _run_in_scratch(arguments: argparse.Namespace, scratch: Path) -> None:
     chunk_files = list(writer.written_files)
 
     if chunk_files:
+        calibration = arguments.digitization.provenance.get("pe_per_cm_file")
+
         attach_provenance_to_many(
             chunk_files,
             stage="clusterization",
+            detector=arguments.detector,
+            extra_files=[calibration] if calibration else [],
             input_path=arguments.input_file,
             parameters={
                 **arguments.digitization.provenance,

@@ -1,6 +1,8 @@
 __all__ = ["save_root_with_metadata", "load_root_metadata", "add_metadata_to_root"]
 
-import ROOT
+# ROOT is imported in the functions that use it, so that get_git_metadata and
+# the configuration-file records can be used without ROOT (the simulation
+# chain writes METADATA with uproot).
 import hashlib
 import json
 import os
@@ -9,11 +11,14 @@ from datetime import datetime
 import re
 
 
-def git(cmd):
-    return subprocess.check_output(cmd).decode().strip()
+def git(cmd, cwd=None):
+    return subprocess.check_output(cmd, cwd=cwd).decode().strip()
 
-def get_git_metadata():
-    """Collect git provenance in as few subprocess calls as possible."""
+def get_git_metadata(repo_dir=None):
+    """Collect git provenance in as few subprocess calls as possible.
+
+    git runs in *repo_dir* if given, else in the current directory.
+    """
 
     # One call: get all tags with their tagger/commit date, sorted newest first.
     # Format: "<refname:short> <version:refname:short>"
@@ -21,9 +26,10 @@ def get_git_metadata():
         raw = subprocess.check_output(
             ["git", "tag", "--list", "--sort=-version:refname"],
             stderr=subprocess.DEVNULL,
+            cwd=repo_dir,
         ).decode().splitlines()
         all_tags = [t.strip() for t in raw if t.strip()]
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, OSError):
         all_tags = []
 
     # Split into algorithm tags (contain "-") and semver-only tags (no "-").
@@ -41,8 +47,8 @@ def get_git_metadata():
 
     # One more call: current short commit hash.
     try:
-        commit = git(["git", "rev-parse", "--short", "HEAD"])
-    except subprocess.CalledProcessError:
+        commit = git(["git", "rev-parse", "--short", "HEAD"], cwd=repo_dir)
+    except (subprocess.CalledProcessError, OSError):
         commit = None
 
     return {
@@ -143,6 +149,8 @@ def save_root_with_metadata(
         max_inline_bytes=max_inline_config_bytes,
     )
 
+    import ROOT
+
     f = ROOT.TFile(path, "RECREATE")
 
     # salva gli oggetti ROOT (istogrammi, tree, ecc.)
@@ -181,6 +189,8 @@ def add_metadata_to_root(
             max_inline_bytes=max_inline_config_bytes,
         )
 
+    import ROOT
+
     f = ROOT.TFile(str(path), "UPDATE")
     meta_str = ROOT.TObjString(json.dumps(metadata))
     meta_str.Write("METADATA")
@@ -189,6 +199,8 @@ def add_metadata_to_root(
 
 
 def load_root_metadata(path):
+    import ROOT
+
     f = ROOT.TFile(str(path))
     meta_obj = f.Get("METADATA")
     if not meta_obj:
