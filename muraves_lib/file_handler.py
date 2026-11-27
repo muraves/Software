@@ -1,4 +1,5 @@
-__all__ = ['decompress', 'parse_slow_control', 'parse_log_file', 'parse_conteggi', 'temp_file_manager', 'copy_on_system', 'temp_to_output']
+__all__ = ['decompress', 'parse_slow_control', 'parse_log_file', 'parse_conteggi', 'temp_file_manager', 'copy_on_system', 'temp_to_output',
+           'make_output_dir', 'copy_into_place', 'scratch_folder', 'scratch_to_output']
 
 import logging
 import os
@@ -17,6 +18,10 @@ logger = logging.getLogger(__name__)
 # tempfile.NamedTemporaryFile are always created rw------- (owner only), and
 # shutil.copy2 would propagate that mode to the final output.
 OUTPUT_FILE_MODE = 0o664
+
+# Permissions of the output folders make_output_dir creates: rwxrwxr-x, for
+# the same reason.
+OUTPUT_DIR_MODE = 0o775
 
 
 def _set_output_permissions(path: Path) -> None:
@@ -385,3 +390,119 @@ def copy_on_system(temp_file, final_file):
     finally:
         #tmp_onsystem.unlink(missing_ok=True)
         temp_file.unlink(missing_ok=True)
+
+
+# ----------------------------------------------------------------------
+# Writing through scratch, for tools that must fail cleanly
+#
+# A variant of temp_to_output for command-line tools that run outside
+# Snakemake (the simulation chain). The output is written to a scratch
+# folder, then copied next to its destination as <name>.tmp, given
+# OUTPUT_FILE_MODE and renamed into place, as temp_to_output does, so it
+# works on /pnfs, where files can only be copied in. The difference is the
+# failure: nothing is left under the output name (an earlier output it was
+# replacing is removed too) and the error is raised, so a failed job exits
+# non-zero and the next stage cannot take a partial or empty file for a
+# good one.
+# ----------------------------------------------------------------------
+
+def make_output_dir(path) -> Path:
+    """Create a folder and its missing parents, group-writable.
+
+    Only the folders created here get OUTPUT_DIR_MODE (whatever the
+    umask); existing ones are left as they are.
+    """
+    path = Path(path)
+    missing = []
+    parent = path
+    while not parent.exists():
+        missing.append(parent)
+        if parent.parent == parent:
+            break
+        parent = parent.parent
+    for folder in reversed(missing):
+        try:
+            folder.mkdir()
+        except FileExistsError:
+            continue
+        try:
+            os.chmod(folder, OUTPUT_DIR_MODE)
+        except OSError as e:
+            logger.warning(f"Could not set permissions {oct(OUTPUT_DIR_MODE)} on {folder}: {e}")
+    if not path.is_dir():
+        raise NotADirectoryError(f"Not a directory: {path}")
+    return path
+
+
+def _replace_with_retries(src: Path, dst: Path, retries: int, backoff: float) -> None:
+    """os.replace, retried on OSError: a busy network filesystem may
+    refuse a rename for a moment. Raises the last error."""
+    for attempt in range(1, retries + 1):
+        try:
+            os.replace(src, dst)
+            return
+        except OSError as e:
+            if attempt == retries:
+                raise
+            logger.warning(f"Renaming {src} to {dst} failed (attempt {attempt} of {retries}): {e}; retrying")
+            time.sleep(backoff * attempt)
+
+
+def copy_into_place(source, output_path, retries: int = 10, backoff: float = 0.1) -> Path:
+    """Copy a finished file to output_path: to <name>.tmp next to it,
+    OUTPUT_FILE_MODE, then an atomic rename (retried). On failure the
+    .tmp is removed and the error raised."""
+    source = Path(source)
+    output_path = Path(output_path)
+    partial = output_path.with_name(output_path.name + ".tmp")
+    try:
+        shutil.copy2(source, partial)
+        _set_output_permissions(partial)
+        _replace_with_retries(partial, output_path, retries, backoff)
+    except BaseException:
+        try:
+            partial.unlink(missing_ok=True)
+        except OSError as e:
+            logger.warning(f"Could not remove {partial}: {e}")
+        raise
+    return output_path
+
+
+@contextmanager
+def scratch_folder(scratch_dir=None):
+    """A new, private scratch folder, removed on exit (success or not).
+
+    It is made in scratch_dir, or in the system's temporary folder
+    (which follows $TMPDIR) when scratch_dir is None.
+    """
+    with tempfile.TemporaryDirectory(prefix="muraves_scratch_", dir=scratch_dir) as folder:
+        yield Path(folder)
+
+
+@contextmanager
+def scratch_to_output(output_path, scratch_dir=None):
+    """Write one output file through scratch.
+
+        with scratch_to_output(final_path) as scratch_path:
+            write(scratch_path)      # and anything that modifies it
+
+    The block writes scratch_path, a file of the same name in a private
+    scratch folder. When the block succeeds, the file is copied into
+    place with copy_into_place. When the block or the copy fails, nothing
+    is left at output_path (an existing file there is removed), the
+    scratch folder is removed and the error is raised.
+    """
+    output_path = Path(output_path)
+    try:
+        with scratch_folder(scratch_dir) as folder:
+            scratch_path = folder / output_path.name
+            yield scratch_path
+            if not scratch_path.is_file():
+                raise FileNotFoundError(f"Nothing was written to {scratch_path}")
+            copy_into_place(scratch_path, output_path)
+    except BaseException:
+        try:
+            output_path.unlink(missing_ok=True)
+        except OSError as e:
+            logger.warning(f"Could not remove {output_path} after a failure: {e}")
+        raise

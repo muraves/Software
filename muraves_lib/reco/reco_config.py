@@ -4,7 +4,7 @@ The parameters ship with ``muraves_lib`` in ``muraves_lib/configuration/``:
 
 * ``shared/reco_parameters.json``: parameters used by both chains;
 * ``data/data_parameters.json``: parameters used only by the data chain;
-* ``simulation/``: parameters used only by the simulation chain (none yet).
+* ``simulation/``: parameters used only by the simulation chain (digitization).
 
 Each value is defined in exactly one file: a chain file may not redefine a section
 of the shared file.
@@ -47,7 +47,7 @@ CHAIN_CONFIG_PATHS = {
 def package_config_paths(chain: str | None = None) -> list[Path]:
     """Package parameter files loaded for ``chain``: the shared file, then the chain's own.
 
-    A chain without its own file yet (simulation) loads the shared file only.
+    A chain without its own file loads the shared file only.
     """
     paths = [SHARED_CONFIG_PATH]
     if chain is not None:

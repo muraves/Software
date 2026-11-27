@@ -1,0 +1,555 @@
+from __future__ import annotations
+
+from collections import defaultdict
+from collections.abc import Mapping
+
+
+import numpy as np
+from scipy.stats import landau
+
+from muraves_lib.reco.cluster_lists import (
+    CreateClusterList,
+    DeterministicSmearingRNG,
+)
+from muraves_lib.reco.reco_config import get_reco_config
+
+from simReco_muraves.models.cluster_record import ClusterRecord
+from simReco_muraves.time_expansion import SIM_TIME_EXPANSION
+from simReco_muraves.clustering.seeding import (
+    digitizer_generator,
+    smearing_seed,
+)
+
+from dataclasses import dataclass, field
+
+@dataclass
+class BarHit:
+    process_id: int
+    event: int
+    station: int
+    module: int
+    bar: int
+    strip: int
+    energy_mev: float
+    path_length_cm: float
+    t_min_ns: float
+    t_max_ns: float
+    multiplicity: int
+
+    @property
+    def dt_ns(self) -> float:
+        return self.t_max_ns - self.t_min_ns
+
+@dataclass
+class DigitizedBarHit:
+    bar_hit: BarHit
+    expected_npe: float
+    observed_npe: float
+
+    @property
+    def process_id(self) -> int:
+        return self.bar_hit.process_id
+
+    @property
+    def strip(self) -> int:
+        return self.bar_hit.strip
+
+    @property
+    def station(self) -> int:
+        return self.bar_hit.station
+
+    @property
+    def event(self) -> int:
+        return self.bar_hit.event
+
+    @property
+    def t_min_ns(self) -> float:
+        return self.bar_hit.t_min_ns
+
+
+@dataclass
+class Plane64:
+    process_id: int
+    event: int
+    station: int
+    deposits: list[float] = field(default_factory=lambda: [0.0] * 64)
+    times: list[float] = field(default_factory=lambda: [0.0] * 64)
+    occupied_strips: int = 0
+
+
+
+class SimClusterizer:
+    """
+    Thin wrapper around the official MURAVES clusterizer.
+
+    Thresholds and clustering constants come from the shared
+    reconstruction configuration (simulation chain) unless given.
+    """
+
+    def __init__(
+        self,
+        cluster_threshold: float | None = None,
+        single_strip_threshold: float | None = None,
+        adjacent_threshold: float | None = None,
+        rng_seed: int | None = None,
+    ):
+
+        configuration = get_reco_config(chain="simulation")
+        thresholds = configuration["reconstruction"]["cluster_thresholds"]
+
+        self.cluster_threshold = (
+            float(thresholds["s1"]) if cluster_threshold is None else cluster_threshold
+        )
+        self.single_strip_threshold = (
+            float(thresholds["s2"]) if single_strip_threshold is None else single_strip_threshold
+        )
+        self.adjacent_threshold = (
+            float(thresholds["s3"]) if adjacent_threshold is None else adjacent_threshold
+        )
+
+        self.cluster_cfg = configuration["cluster_lists"]
+        self.strips_cfg = configuration["strips"]
+
+        # None keeps the experiment's default: unseeded smearing from
+        # the operating system, different on every run.
+        self.rng_seed = rng_seed
+
+    def cluster_plane(
+        self,
+        plane: Plane64,
+    ):
+
+        return CreateClusterList(
+            Deposits=plane.deposits,
+
+            EnergyThreshold_clusterStrip=
+                self.cluster_threshold,
+
+            EnergyThreshold_singleStrip=
+                self.single_strip_threshold,
+
+            AdStripsThEnergy_singleStripCl=
+                self.adjacent_threshold,
+
+            Texp1=SIM_TIME_EXPANSION,
+            Texp2=SIM_TIME_EXPANSION,
+
+            TriggerMask1=list(range(32)),
+            TriggerMask2=list(range(32)),
+
+            smearing_rng=self._smearing_rng(plane),
+
+            cluster_cfg=self.cluster_cfg,
+            strips_cfg=self.strips_cfg,
+        )
+
+    def _smearing_rng(self, plane: Plane64):
+        """Per-plane generator for single-strip smearing.
+
+        Returns None without a seed, which leaves CreateClusterList on
+        its unseedable system default.
+        """
+        if self.rng_seed is None:
+            return None
+
+        return DeterministicSmearingRNG(
+            smearing_seed(
+                self.rng_seed,
+                plane.process_id,
+                plane.event,
+                plane.station,
+            )
+        )
+
+def build_planes(digitized_hits):
+    """
+    Build one Plane64 object per (event, station).
+    """
+
+    grouped = defaultdict(list)
+
+    for hit in digitized_hits:
+
+        grouped[
+            (
+                hit.process_id,
+                hit.event,
+                hit.station,
+            )
+        ].append(hit)
+
+    planes = []
+
+    for (process_id, event, station), hits in grouped.items():
+
+        plane = Plane64(
+            process_id=process_id,
+            event=event,
+            station=station,
+        )
+
+        occupied = 0
+
+        for hit in hits:
+
+            strip = hit.strip
+
+            if strip < 0 or strip >= 64:
+                raise ValueError(
+                    f"Invalid strip number: {strip}"
+                )
+
+            plane.deposits[strip] += hit.observed_npe
+
+            plane.times[strip] = hit.t_min_ns
+
+            occupied += 1
+
+        plane.occupied_strips = occupied
+
+        planes.append(plane)
+
+    return planes
+def module_bar_to_strip(module, bar):
+    """
+    Convert (module, bar) into global strip number.
+
+    module 0 -> strips 0..31
+    module 1 -> strips 32..63
+    """
+
+    if module == 0:
+        return bar
+
+    if module == 1:
+        return bar + 32
+
+    raise ValueError(
+        f"Unexpected module number: {module}"
+    )
+
+
+def aggregate_bar_hits(raw_hits):
+    """
+    Aggregate Geant4 HitData entries into bar-level responses.
+
+    Grouping key:
+        (event, station, module, bar)
+
+    Energy:
+        E_bar = sum(Edep)
+
+    Pathlength:
+        L_bar = sum(pathlength) in cm
+
+    Timing:
+        t_min = min(hit times)
+        t_max = max(hit times)
+
+    Multiplicity:
+        number of contributing hits
+    """
+
+    grouped = defaultdict(list)
+
+    for hit in raw_hits:
+
+        key = (
+            hit.process_id,
+            hit.event,
+            hit.station,
+            hit.module,
+            hit.bar,
+        )
+
+        grouped[key].append(hit)
+
+    aggregated = []
+
+    for key, hits in grouped.items():
+
+        process_id, event, station, module, bar = key
+
+        strip = module_bar_to_strip(
+            module,
+            bar,
+        )
+
+        energy_mev = sum(
+            h.edep_mev for h in hits
+        )
+
+        path_length_cm = sum(
+            h.path_length_cm for h in hits
+        )
+
+        t_min_ns = min(
+            h.time_ns for h in hits
+        )
+
+        t_max_ns = max(
+            h.time_ns for h in hits
+        )
+
+        aggregated.append(
+            BarHit(
+                process_id=process_id,
+                event=event,
+                station=station,
+                module=module,
+                bar=bar,
+                strip=strip,
+                energy_mev=energy_mev,
+                path_length_cm=path_length_cm,
+                t_min_ns=t_min_ns,
+                t_max_ns=t_max_ns,
+                multiplicity=len(hits),
+            )
+        )
+
+    return aggregated
+class PoissonDigitizer:
+    """
+    First-pass digitizer.
+
+    expected_nPE = pe_per_mev * E(MeV)
+
+    pe_per_mev is either one factor for every plane, or a mapping from
+    station ID to factor. A station missing from the mapping is an
+    error, never a silent default.
+
+    observed_nPE ~ Poisson(expected_nPE)
+    """
+
+    def __init__(
+        self,
+        pe_per_mev=8.5,
+        rng_seed=None,
+    ):
+
+        self.pe_per_mev = pe_per_mev
+        self.rng_seed = rng_seed
+        self.rng = np.random.default_rng(rng_seed)
+
+    def factor_for(self, station):
+        """Conversion factor, in nPE per MeV, for one station."""
+        if not isinstance(self.pe_per_mev, Mapping):
+            return self.pe_per_mev
+
+        try:
+            return self.pe_per_mev[station]
+        except KeyError:
+            raise ValueError(
+                f"no conversion factor for station {station}; the "
+                "factors provided cover stations "
+                f"{sorted(self.pe_per_mev)}"
+            ) from None
+
+    def digitize_bar(self, bar_hit, rng=None):
+
+        expected_npe = (
+            self.factor_for(bar_hit.station)
+            * bar_hit.energy_mev
+        )
+
+        observed_npe = float(
+            (self.rng if rng is None else rng).poisson(expected_npe)
+        )
+
+        return DigitizedBarHit(
+            bar_hit=bar_hit,
+            expected_npe=expected_npe,
+            observed_npe=observed_npe,
+        )
+
+    def digitize(self, bar_hits):
+        """Digitize bar hits, returning them in the order given.
+
+        With a seed, each (ProcessID, Event, Station) draws from its
+        own generator, and within a plane bars are drawn in strip
+        order. A bar's result therefore depends neither on processing
+        order nor on the order in which Geant4 wrote its hits. See
+        simReco_muraves.clustering.seeding.
+
+        Without a seed, all bars share one unseeded stream.
+        """
+        if self.rng_seed is None:
+            return self._digitize_single_stream(bar_hits)
+
+        bar_hits = list(bar_hits)
+        indices_by_plane = defaultdict(list)
+
+        for index, hit in enumerate(bar_hits):
+            indices_by_plane[
+                (hit.process_id, hit.event, hit.station)
+            ].append(index)
+
+        digitized = [None] * len(bar_hits)
+
+        for (process_id, event, station), indices in indices_by_plane.items():
+            rng = digitizer_generator(
+                self.rng_seed,
+                process_id,
+                event,
+                station,
+            )
+
+            for index in sorted(indices, key=lambda i: bar_hits[i].strip):
+                digitized[index] = self.digitize_bar(bar_hits[index], rng)
+
+        return digitized
+
+    def _digitize_single_stream(self, bar_hits):
+
+        return [
+            self.digitize_bar(hit)
+            for hit in bar_hits
+        ]
+
+
+LANDAU_SIGMA = 2.0 # Landau width of the NPE/cm draw, in NPE/cm.
+LANDAU_CLIP = (2.0, 7.0) # Draw kept inside (mpv - 2 sigma, mpv + 7 sigma.
+
+# SciPy standard Landau -> ROOT: x_ROOT = SCALE * x_SciPy + SHIFT.
+LANDAU_SCIPY_SCALE = np.pi / 2
+LANDAU_SCIPY_SHIFT = np.log(np.pi / 2)
+
+
+
+_LANDAU_CDF_WINDOW = landau.cdf([
+    (-LANDAU_CLIP[0] - LANDAU_SCIPY_SHIFT) / LANDAU_SCIPY_SCALE,
+    (LANDAU_CLIP[1] - LANDAU_SCIPY_SHIFT) / LANDAU_SCIPY_SCALE,
+])
+
+
+def landau_factor(rng, mpv, sigma=LANDAU_SIGMA):
+    """One draw of ROOT's Landau(mpv, sigma), kept inside
+    [mpv - LANDAU_CLIP[0] * sigma, mpv + LANDAU_CLIP[1] * sigma]."""
+    u = rng.uniform(*_LANDAU_CDF_WINDOW)
+    x = LANDAU_SCIPY_SCALE * landau.ppf(u) + LANDAU_SCIPY_SHIFT
+    return mpv + sigma * float(x)
+
+
+class LandauPathDigitizer(PoissonDigitizer):
+    """
+    Path-length digitizer: converts a particle's path length in a bar to nPE.
+
+    For each bar:
+
+        L            = path length summed over the bar's Geant4 hits, in cm
+        observed_nPE = L * Landau(mpv=npe_per_cm[station], LANDAU_SIGMA)
+        expected_nPE = L * npe_per_cm[station]
+
+    Landau draw:
+        - mpv is ROOT's Landau parameter.
+        - LANDAU_SIGMA = 2 NPE/cm.
+        - Limited to [mpv - 2 sigma, mpv + 7 sigma] (LANDAU_CLIP).
+        - One draw per bar, with no Poisson smearing on top, so
+          observed_nPE is not an integer.
+
+    SciPy to ROOT:
+        The draw follows ROOT's Landau(mpv, sigma). SciPy's standard Landau
+        is converted to ROOT's with x_ROOT = (pi/2) * x_SciPy + ln(pi/2).
+
+    """
+
+
+    def __init__(
+        self,
+        pe_per_cm,
+        rng_seed=None,
+    ):
+
+        super().__init__(pe_per_mev=pe_per_cm, rng_seed=rng_seed)
+
+    def digitize_bar(self, bar_hit, rng=None):
+
+        pe_per_cm = self.factor_for(bar_hit.station)
+        draw = landau_factor(self.rng if rng is None else rng, pe_per_cm)
+
+        return DigitizedBarHit(
+            bar_hit=bar_hit,
+            expected_npe=pe_per_cm * bar_hit.path_length_cm,
+            observed_npe=draw * bar_hit.path_length_cm,
+        )
+
+
+def cluster_collection_to_records(
+    event,
+    station,
+    cluster_collection,
+    plane,
+):
+
+    records = []
+
+    n_clusters = len(
+        cluster_collection.ClustersEnergy
+    )
+
+    cluster_multiplicity = n_clusters
+
+    for idx in range(n_clusters):
+
+        strip_ids = [
+            int(x)
+            for x in cluster_collection.StripsID[idx]
+        ]
+
+        strip_energies = [
+            float(x)
+            for x in cluster_collection.StripsEnergy[idx]
+        ]
+
+        strip_times = [
+            plane.times[strip]
+            for strip in strip_ids
+        ]
+
+        cluster_time = min(strip_times)
+
+        cluster_time_spread = (
+            max(strip_times)
+            - min(strip_times)
+        )
+
+        records.append(
+
+            ClusterRecord(
+
+                process_id=plane.process_id,
+
+                event=event,
+                station=station,
+                cluster_id=idx,
+
+                cluster_multiplicity=
+                    cluster_multiplicity,
+
+                cluster_energy=float(
+                    cluster_collection.ClustersEnergy[idx]
+                ),
+
+                cluster_position=float(
+                    cluster_collection.ClustersPositions[idx]
+                ),
+
+                cluster_size=int(
+                    cluster_collection.ClustersSize[idx]
+                ),
+
+                cluster_time=float(
+                    cluster_time
+                ),
+
+                cluster_time_spread=float(
+                    cluster_time_spread
+                ),
+
+                strip_ids=strip_ids,
+
+                strip_energies=strip_energies,
+            )
+        )
+
+    return records

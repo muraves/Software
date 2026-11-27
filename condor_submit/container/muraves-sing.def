@@ -12,6 +12,7 @@ From: condaforge/miniforge3:latest
 %files
     ../../pyproject.toml /opt/muraves_lib/pyproject.toml
     ../../muraves_lib /opt/muraves_lib/muraves_lib
+    ../../muraves/simulation/simReco_muraves /opt/muraves_lib/muraves/simulation/simReco_muraves
 
 
 %post
@@ -27,7 +28,7 @@ From: condaforge/miniforge3:latest
         pandas \
         polars \
         numpy \
-        scipy \
+        "scipy>=1.16" \
         matplotlib \
         jupyter \
         zfit \

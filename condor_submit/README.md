@@ -94,8 +94,8 @@ it used.
    TAG=$(git describe --tags)
    apptainer build --mksquashfs-args "-processors 4" muraves-sing_${TAG}.sif muraves-sing.def
    ```
-   The build must run from this folder: `muraves-sing.def` copies `muraves_lib` with paths
-   relative to it. The packages in `muraves-sing.def` are not pinned, so two builds of the same
+   The build must run from this folder: `muraves-sing.def` copies `muraves_lib` and the
+   simulation package (`muraves/simulation/simReco_muraves`) with paths relative to it. The packages in `muraves-sing.def` are not pinned, so two builds of the same
    tag at different times can contain different package versions.
 2. Copy the image to the shared folder:
    ```bash

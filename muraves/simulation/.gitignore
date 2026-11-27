@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.my_venv/
+*.bak_*
+extras/
+logs_Trk/
+.DS_Store
+
+dist/
+build/
+currentStatus_*.txt
+docs/
+.venv/
