@@ -21,7 +21,7 @@ The reconstruction algorithms that must be identical for data and simulation liv
 | Module | Content |
 |---|---|
 | `muraves_lib/reco/cluster_lists.py` | strip clustering (`CreateClusterList`) |
-| `muraves_lib/reco/depth.py` | depth of 2-bar clusters in the plane (`cluster_depths`, method B, see `muraves_lib/configuration/README.md`) |
+| `muraves_lib/reco/depth.py` | depth of 2-bar clusters in the plane (`plane_depths`, method B, see `muraves_lib/configuration/README.md`) |
 | `muraves_lib/reco/tracking.py` | 3-plane / 4-plane track building (`MakeTracks`) |
 | `muraves_lib/reco/angular_coordinates.py` | track angles (`TrackAngularCoordinates`) |
 | `muraves_lib/reco/golden_selector.py` | golden-track definition (`is_golden`) |

@@ -88,7 +88,8 @@ Note on nested list branches:
 
 Each cluster group also has `ClusterDepth_{Z,Y}{1..4}` [m]: the depth of the cluster used by
 the track fit (`depth_correction` in `muraves_lib/configuration/README.md`; 0 when disabled
-or for clusters that are not 2-bar).
+or for clusters that are not 2-bar). The `Residue_Track*` branches are taken at that depth:
+to recompute them offline use `x_pos + ClusterDepth_*`.
 
 Both files are created in:
 

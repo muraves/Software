@@ -1,10 +1,35 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import logging
 import math
 from typing import Sequence
 
 from .reco_config import get_reco_config
+
+logger = logging.getLogger(__name__)
+
+# Set once the "depth correction enabled but no depths given" warning has been logged.
+_warned_missing_depths = False
+
+
+def _warn_if_depths_missing(depths: tuple) -> None:
+    """Warn once per process when the depth correction is enabled but no depths are passed.
+
+    Depths passed explicitly (also all zeros, e.g. for a view whose orientation is null)
+    are a deliberate choice and do not trigger the warning.
+    """
+    global _warned_missing_depths
+    if _warned_missing_depths or any(d is not None for d in depths):
+        return
+    if not get_reco_config().get("depth_correction", {}).get("enabled", False):
+        return
+    _warned_missing_depths = True
+    logger.warning(
+        "depth_correction is enabled but MakeTracks was called without cluster depths: "
+        "tracks are fitted at the plane centre, the depth correction is NOT applied "
+        "(see https://github.com/muraves/Software/issues/32)."
+    )
 
 
 @dataclass
@@ -115,15 +140,18 @@ def MakeTracks(
 ) -> TracksCollection:
     """Python port of MakeTracks from Tracking.cc.
 
-    ``depth_<plane>`` (method B, ``muraves_lib.reco.depth.cluster_depths``): depth Xc [m] of
+    ``depth_<plane>`` (method B, ``muraves_lib.reco.depth.plane_depths``): depth Xc [m] of
     each cluster of the plane w.r.t. the plane centre. A cluster is then the 2D point
     ``(X_pos[plane] + Xc, position + Z_add[plane])`` everywhere: P2 candidate prediction and
     proximity cut, 3p fit and residues, prediction on P4, 4p fit, residues and scattering
     angle. Residues are measured at that point. The P4 acceptance check
     (``ExpectedPosition_OnPlane4th``) stays at the plane centre. ``None`` means all depths are
-    0, which gives exactly the reconstruction without depths.
+    0, which gives exactly the reconstruction without depths; if ``depth_correction`` is
+    enabled in the configuration, that logs a warning (once per process).
     """
     del Texp_cl4  # kept for signature compatibility with C++
+
+    _warn_if_depths_missing((depth_1, depth_2, depth_3, depth_4))
 
     def _depths(depth: Sequence[float] | None, clusters: Sequence[float], name: str) -> Sequence[float]:
         if depth is None:

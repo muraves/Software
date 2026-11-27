@@ -13,7 +13,7 @@ from ReadEvent import ReadEvent
 from muraves_lib.reco.cluster_lists import CreateClusterList, DeterministicSmearingRNG
 from muraves_lib.reco.angular_coordinates import TrackAngularCoordinates
 from muraves_lib.reco.tracking import MakeTracks
-from muraves_lib.reco.depth import cluster_depths, face_orientation_for
+from muraves_lib.reco.depth import face_orientation_for, plane_depths
 from muraves_lib.reco.reco_config import (
     get_reco_config,
     package_config_paths,
@@ -615,14 +615,13 @@ def run_reconstruction(
     tracking_cfg = cfg["tracking"]
 
     # DEPTH OF 2-BAR CLUSTERS (method B, muraves_lib.reco.depth): None = no depths for that view
-    first_strip_pos = float(strips_cfg["first_strip_pos"])
-    strip_pitch = float(strips_cfg["adjacent_strips_distance"])
     face_orientation_z = face_orientation_for(cfg, color, "z")
     face_orientation_y = face_orientation_for(cfg, color, "y")
     print(
         f"Depth of 2-bar clusters in the track fit: "
         f"Z view {'off' if face_orientation_z is None else f'on (face_orientation {face_orientation_z:+d})'}, "
         f"Y view {'off' if face_orientation_y is None else f'on (face_orientation {face_orientation_y:+d})'}"
+        + (f", h/p {cfg['depth_correction']['h_over_p']:.4f}" if face_orientation_z or face_orientation_y else "")
     )
     # additional parameter available in C++ but not used:
     #const int nInfo = 168;
@@ -1069,11 +1068,11 @@ def run_reconstruction(
             # Depth Xc of each cluster (non-zero only for 2-bar clusters, and only when the view's
             # correction is on); the track fit uses the point (x_pos + Xc, position + add).
             depths_z = [
-                cluster_depths(r.ClustersPositions, r.ClustersSize, first_strip_pos, strip_pitch, face_orientation_z)
+                plane_depths(cfg, color, "z", r.ClustersPositions, r.ClustersSize)
                 for r in (results_p1x, results_p2x, results_p3x, results_p4x)
             ]
             depths_y = [
-                cluster_depths(r.ClustersPositions, r.ClustersSize, first_strip_pos, strip_pitch, face_orientation_y)
+                plane_depths(cfg, color, "y", r.ClustersPositions, r.ClustersSize)
                 for r in (results_p1y, results_p2y, results_p3y, results_p4y)
             ]
 

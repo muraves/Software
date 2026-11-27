@@ -11,12 +11,14 @@ Run inside the muraves container:
 
 from __future__ import annotations
 
+import logging
 import math
 from dataclasses import asdict
 
 import pytest
 
 from muraves_lib.reco.depth import NOMINAL_H_OVER_P, cluster_depths
+import muraves_lib.reco.tracking as tracking_module
 from muraves_lib.reco.tracking import MakeTracks
 
 C0 = -0.528
@@ -144,3 +146,31 @@ def test_depth_length_must_match():
     with pytest.raises(ValueError):
         MakeTracks(*clusters, *([[]] * 4), *([[]] * 4), 1.0, X_POS, Z_ADD, SIGMA,
                    tracking_cfg=TRACKING, strips_cfg=STRIPS, depth_2=[0.0, 0.0])
+
+
+def test_warning_when_enabled_but_no_depths(monkeypatch, caplog):
+    """Correction enabled in the configuration and MakeTracks called without depths:
+    one warning per process; explicit depths (also zeros) do not warn."""
+    clusters = [[0.0], [0.0], [0.0], []]
+    args = (*clusters, *([[1.0]] * 3), [], *([[1.0]] * 3), [], 1.0, X_POS, Z_ADD, SIGMA)
+    common = dict(tracking_cfg=TRACKING, strips_cfg=STRIPS)
+    zeros = dict(depth_1=[0.0], depth_2=[0.0], depth_3=[0.0], depth_4=[])
+    monkeypatch.setattr(tracking_module, "get_reco_config", lambda: {"depth_correction": {"enabled": True}})
+
+    def warnings():
+        return [r for r in caplog.records if r.levelno == logging.WARNING and "depth_correction" in r.getMessage()]
+
+    with caplog.at_level(logging.WARNING, logger="muraves_lib.reco.tracking"):
+        monkeypatch.setattr(tracking_module, "_warned_missing_depths", False)
+        MakeTracks(*args, **common, **zeros)
+        assert warnings() == []
+        MakeTracks(*args, **common)
+        MakeTracks(*args, **common)
+        assert len(warnings()) == 1
+        assert "issues/32" in warnings()[0].getMessage()
+
+        caplog.clear()
+        monkeypatch.setattr(tracking_module, "_warned_missing_depths", False)
+        monkeypatch.setattr(tracking_module, "get_reco_config", lambda: {"depth_correction": {"enabled": False}})
+        MakeTracks(*args, **common)
+        assert warnings() == []

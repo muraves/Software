@@ -4,7 +4,7 @@ Modules:
 
 * ``reco_config``         layered configuration (package defaults + workflow files);
 * ``cluster_lists``       strip clustering (``CreateClusterList``);
-* ``depth``               depth of 2-bar clusters in the plane (``cluster_depths``, method B);
+* ``depth``               depth of 2-bar clusters in the plane (``plane_depths``, method B);
 * ``tracking``            3-plane / 4-plane track building (``MakeTracks``);
 * ``angular_coordinates`` track angles (``TrackAngularCoordinates``);
 * ``golden_selector``     golden-track definition (``is_golden``).

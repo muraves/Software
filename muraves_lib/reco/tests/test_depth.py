@@ -11,7 +11,7 @@ import random
 
 import pytest
 
-from muraves_lib.reco.depth import NOMINAL_H_OVER_P, cluster_depths, face_orientation_for
+from muraves_lib.reco.depth import NOMINAL_H_OVER_P, cluster_depths, face_orientation_for, plane_depths
 from muraves_lib.reco.reco_config import get_reco_config
 
 C0 = -0.528
@@ -108,8 +108,17 @@ def test_bad_inputs():
 
 # --- configuration -------------------------------------------------------------------------
 
-def _config(enabled, orientations):
-    return {"depth_correction": {"enabled": enabled, "face_orientation": orientations}}
+HODOSCOPES = ("NERO", "BLU", "ROSSO")
+
+
+def _config(enabled, orientations, h_over_p=NOMINAL_H_OVER_P):
+    cfg = {
+        "depth_correction": {"enabled": enabled, "h_over_p": h_over_p},
+        "strips": {"first_strip_pos": C0, "adjacent_strips_distance": PITCH},
+    }
+    if orientations is not None:
+        cfg["depth_face_orientation"] = orientations
+    return cfg
 
 
 def test_orientation_from_config():
@@ -123,9 +132,15 @@ def test_orientation_from_config():
         face_orientation_for(cfg, "NERO", "x")
 
 
-def test_disabled_or_missing_section_means_no_depth():
+def test_disabled_or_missing_switch_means_no_depth():
     assert face_orientation_for(_config(False, {"NERO": {"z": 1, "y": -1}}), "NERO", "z") is None
+    assert face_orientation_for(_config(False, None), "NERO", "z") is None
     assert face_orientation_for({}, "NERO", "z") is None
+
+
+def test_enabled_without_orientation_section_is_an_error():
+    with pytest.raises(ValueError, match="depth_face_orientation"):
+        face_orientation_for(_config(True, None), "NERO", "z")
 
 
 def test_bad_orientation_value_in_config():
@@ -133,20 +148,57 @@ def test_bad_orientation_value_in_config():
         face_orientation_for(_config(True, {"NERO": {"z": 2, "y": -1}}), "NERO", "z")
 
 
-EXPECTED = {
-    # data: enabled, orientation measured on v1 data; simulation: no section until the sim chain is wired
-    "data": (True, {h: {"z": 1, "y": -1} for h in ("NERO", "BLU", "ROSSO")}),
-    "simulation": (None, {h: {"z": None, "y": None} for h in ("NERO", "BLU", "ROSSO")}),
-}
+def test_plane_depths():
+    """plane_depths = cluster_depths with geometry, orientation and h/p from the configuration."""
+    positions = [C0 + 10.3 * PITCH, C0 + 11.6 * PITCH, C0 + 20.0 * PITCH]
+    sizes = [2, 2, 1]
+    cfg = _config(True, {"NERO": {"z": 1, "y": None}}, h_over_p=0.7)
+    assert plane_depths(cfg, "NERO", "z", positions, sizes) == cluster_depths(
+        positions, sizes, C0, PITCH, 1, h_over_p=0.7
+    )
+    assert plane_depths(cfg, "NERO", "y", positions, sizes) == [0.0] * 3
+    assert plane_depths(_config(False, None), "NERO", "z", positions, sizes) == [0.0] * 3
+    with pytest.raises(ValueError):
+        plane_depths(_config(False, None), "NERO", "z", positions, [2])
 
 
-@pytest.mark.parametrize("chain", ["data", "simulation"])
-def test_package_configuration(chain):
-    cfg = get_reco_config(chain=chain)
-    enabled, orientation = EXPECTED[chain]
-    assert cfg.get("depth_correction", {}).get("enabled") is enabled
-    for hodoscope, views in orientation.items():
-        for view, value in views.items():
-            assert face_orientation_for(cfg, hodoscope, view) == value
+def test_shared_switch_and_h_over_p():
+    """enabled and h_over_p are shared parameters: the same for both chains."""
+    for chain in ("data", "simulation"):
+        section = get_reco_config(chain=chain)["depth_correction"]
+        assert section["enabled"] is True
+        assert section["h_over_p"] == pytest.approx(NOMINAL_H_OVER_P)
+
+
+def test_data_configuration():
+    cfg = get_reco_config(chain="data")
+    for hodoscope in HODOSCOPES:
+        assert face_orientation_for(cfg, hodoscope, "z") == 1
+        assert face_orientation_for(cfg, hodoscope, "y") == -1
     strips = cfg["strips"]
     assert strips["first_strip_pos"] == C0 and strips["adjacent_strips_distance"] == PITCH
+
+
+@pytest.mark.parametrize(
+    "chain",
+    [
+        "data",
+        pytest.param(
+            "simulation",
+            marks=pytest.mark.xfail(
+                reason="simulation chain not connected to the depth correction yet: "
+                "https://github.com/muraves/Software/issues/32 (remove this marker then)",
+                strict=False,
+            ),
+        ),
+    ],
+)
+def test_chains_in_step(chain):
+    """With the correction enabled, every hodoscope/view has an orientation in every chain,
+    so data and simulation are always reconstructed the same way."""
+    cfg = get_reco_config(chain=chain)
+    if not cfg["depth_correction"]["enabled"]:
+        return
+    for hodoscope in HODOSCOPES:
+        for view in ("z", "y"):
+            assert face_orientation_for(cfg, hodoscope, view) is not None, (chain, hodoscope, view)

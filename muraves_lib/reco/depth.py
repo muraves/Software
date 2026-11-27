@@ -15,8 +15,11 @@ at the plane centre as before. The track fit then uses the point
 ``(x_pos + Xc, z_c + z_add)``.
 
 ``face_orientation`` is +1 when an (even, odd) strip pair shares a "\\" face (dz/dx < 0),
-as in the simulated geometry, and -1 when the plane is mirrored. It is set per hodoscope
-and view in the ``depth_correction`` section of the chain configuration files.
+as in the simulated geometry, and -1 when the plane is mirrored. The switch (``enabled``)
+and ``h_over_p`` are in the ``depth_correction`` section of the shared parameters, one
+value for both chains; the orientation, which differs between the real detector and the
+simulation, is set per hodoscope and view in the ``depth_face_orientation`` section of
+each chain file. ``plane_depths`` reads all of them: it is the entry point for both chains.
 
 Configuration and validation: ``muraves_lib/configuration/README.md`` (``depth_correction``).
 """
@@ -26,10 +29,9 @@ from __future__ import annotations
 import math
 from typing import Any, Sequence
 
-# Bar height / strip pitch. The triangle faces have |dz/dx| = 0.97 = pitch / height
-# (checked on the Geant4 geometry of the simulation).
-# TODO: make it a parameter of the depth_correction configuration once the value preferred
-# by the data (about 0.7, MC about 0.85) has been discussed.
+# Bar height / strip pitch of the nominal geometry: the triangle faces have
+# |dz/dx| = 0.97 = pitch / height (checked on the Geant4 geometry of the simulation).
+# The reconstruction takes the value from ``depth_correction.h_over_p`` in the configuration.
 NOMINAL_H_OVER_P = 1.0 / 0.97
 
 VIEWS = ("z", "y")
@@ -68,27 +70,69 @@ def cluster_depths(
     return depths
 
 
+def depth_correction_enabled(config: dict[str, Any]) -> bool:
+    """True when the ``depth_correction`` section exists and is enabled."""
+    return bool(config.get("depth_correction", {}).get("enabled", False))
+
+
 def face_orientation_for(config: dict[str, Any], hodoscope: str, view: str) -> int | None:
     """Face orientation to use for ``hodoscope`` and ``view`` ("z" or "y"), or None for no depths.
 
-    None when the configuration has no ``depth_correction`` section (shared parameters
-    only), when the correction is disabled, or when the orientation is ``null`` (not
-    measured). An enabled correction with a hodoscope that is not listed is an error.
+    None when the correction is disabled, or when the orientation is ``null`` (not
+    measured). An enabled correction whose chain has no ``depth_face_orientation``
+    section, or does not list ``hodoscope``, is an error.
     """
     if view not in VIEWS:
         raise ValueError(f"view must be one of {VIEWS}, got {view!r}")
-    section = config.get("depth_correction")
-    if not section or not section.get("enabled", False):
+    if not depth_correction_enabled(config):
         return None
-    orientations = section.get("face_orientation", {})
+    orientations = config.get("depth_face_orientation")
+    if orientations is None:
+        raise ValueError(
+            "depth_correction is enabled but this chain's configuration has no "
+            "depth_face_orientation section"
+        )
     if hodoscope not in orientations:
         raise ValueError(
-            f"depth_correction is enabled but face_orientation has no entry for {hodoscope!r} "
+            f"depth_correction is enabled but depth_face_orientation has no entry for {hodoscope!r} "
             f"(known: {sorted(k for k in orientations if not k.startswith('_'))})"
         )
     value = orientations[hodoscope].get(view)
     if value is None:
         return None
     if value not in (1, -1):
-        raise ValueError(f"face_orientation.{hodoscope}.{view} must be +1, -1 or null, got {value!r}")
+        raise ValueError(
+            f"depth_face_orientation.{hodoscope}.{view} must be +1, -1 or null, got {value!r}"
+        )
     return int(value)
+
+
+def plane_depths(
+    config: dict[str, Any],
+    hodoscope: str,
+    view: str,
+    positions: Sequence[float],
+    sizes: Sequence[int],
+) -> list[float]:
+    """Depth Xc [m] of the clusters of one plane, from the reconstruction configuration.
+
+    Reads the strip geometry (``strips``), the switch and ``h_over_p``
+    (``depth_correction``) and the face orientation (``depth_face_orientation``) and
+    calls ``cluster_depths``. All zeros when the correction is disabled or the
+    orientation of that hodoscope/view is ``null``. Use it in every chain, so that the
+    depths are computed in one place.
+    """
+    orientation = face_orientation_for(config, hodoscope, view)
+    if orientation is None:
+        if len(positions) != len(sizes):
+            raise ValueError(f"{len(positions)} cluster positions but {len(sizes)} cluster sizes")
+        return [0.0] * len(positions)
+    strips = config["strips"]
+    return cluster_depths(
+        positions,
+        sizes,
+        float(strips["first_strip_pos"]),
+        float(strips["adjacent_strips_distance"]),
+        orientation,
+        h_over_p=float(config["depth_correction"]["h_over_p"]),
+    )

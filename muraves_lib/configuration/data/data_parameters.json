@@ -39,14 +39,10 @@
     "_note": "Command-line defaults of MURAVES_reco.py.",
     "progress_every_default": 1000
   },
-  "depth_correction": {
-    "_note": "Method B, see muraves_lib/configuration/README.md: a 2-bar cluster is fitted at the depth Xc where the muon crosses the face shared by the two bars, Xc = -face_orientation * sign_k * (h/p) * (z_c - B), with k the lower strip, sign_k = +1 for k even, B the boundary of the pair; other cluster sizes keep Xc = 0. enabled: false gives exactly the reconstruction without depths.",
-    "enabled": true,
-    "_face_orientation_note": "Per hodoscope and view: +1 when an (even, odd) strip pair shares a '\\' face (dz/dx ~ -0.97), as in the simulated geometry; -1 when mirrored; null = not measured, no depth for that hodoscope/view. Measured from the dominant parity of the lower strip of 2-bar clusters at slope >= +0.8 (NERO, BLU, ROSSO, all four planes: Z even dominates, Y odd dominates, 93-96 % dominance).",
-    "face_orientation": {
-      "NERO": {"z": 1, "y": -1},
-      "BLU": {"z": 1, "y": -1},
-      "ROSSO": {"z": 1, "y": -1}
-    }
+  "depth_face_orientation": {
+    "_note": "Face orientation of the data hodoscopes for the depth correction (depth_correction in shared/reco_parameters.json). Per hodoscope and view: +1 when an (even, odd) strip pair shares a '\\' face (dz/dx ~ -0.97), as in the simulated geometry; -1 when mirrored; null = not measured, no depth for that hodoscope/view. Measured from the dominant parity of the lower strip of 2-bar clusters at slope >= +0.8 (v1 data, NERO, BLU, ROSSO, all four planes: Z even dominates, Y odd dominates, 93-96 % dominance).",
+    "NERO": {"z": 1, "y": -1},
+    "BLU": {"z": 1, "y": -1},
+    "ROSSO": {"z": 1, "y": -1}
   }
 }
