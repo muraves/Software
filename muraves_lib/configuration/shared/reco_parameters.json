@@ -74,5 +74,11 @@
   },
   "tracking": {
     "scattering_pi": 3.14159
+  },
+  "depth_correction": {
+    "_note": "Method B, see muraves_lib/configuration/README.md: a 2-bar cluster is fitted at the depth Xc where the muon crosses the face shared by the two bars, Xc = -face_orientation * sign_k * h_over_p * (z_c - B), with k the lower strip, sign_k = +1 for k even, B the boundary of the pair; other cluster sizes keep Xc = 0. One switch for both chains; the face orientation is per chain (depth_face_orientation in the chain file). enabled: false gives exactly the reconstruction without depths.",
+    "enabled": true,
+    "_h_over_p_note": "Bar height / strip pitch = 1/0.97 (nominal geometry: the triangle faces have |dz/dx| = 0.97). The data prefer about 0.7, MC about 0.85: to be studied before changing it.",
+    "h_over_p": 1.0309278350515465
   }
 }
