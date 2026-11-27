@@ -40,6 +40,15 @@ jobs:
         run: |
           docker build -t muraves:latest .
 
+      - name: Unit tests (muraves_lib/reco)
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            muraves:latest bash -c \
+            "cd /workspace && \
+             source /opt/conda/etc/profile.d/conda.sh && conda activate muraves && \
+             python -m pytest muraves_lib/reco/tests -p no:cacheprovider -v"
+
       - name: Run Snakemake workflow in container
         run: |
           docker run --rm \
